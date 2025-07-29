@@ -53,7 +53,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * dubbo protocol support.
+ * Dubbo协议实现类
+ * 负责处理Dubbo协议的服务暴露和引用，包括：
+ * 1. 服务端：启动服务器，接收请求，调用服务实现
+ * 2. 客户端：创建连接，发送请求，接收响应
  */
 public class DubboProtocol extends AbstractProtocol {
 
@@ -62,22 +65,44 @@ public class DubboProtocol extends AbstractProtocol {
     public static final int DEFAULT_PORT = 20880;
     private static final String IS_CALLBACK_SERVICE_INVOKE = "_isCallBackServiceInvoke";
     private static DubboProtocol INSTANCE;
-    private final Map<String, ExchangeServer> serverMap = new ConcurrentHashMap<String, ExchangeServer>(); // <host:port,Exchanger>
-    private final Map<String, ReferenceCountExchangeClient> referenceClientMap = new ConcurrentHashMap<String, ReferenceCountExchangeClient>(); // <host:port,Exchanger>
+
+    // 服务端缓存，key为host:port，value为服务端Server对象
+    private final Map<String, ExchangeServer> serverMap = new ConcurrentHashMap<String, ExchangeServer>();
+
+    // 客户端缓存，key为host:port，value为引用计数的客户端
+    private final Map<String, ReferenceCountExchangeClient> referenceClientMap = new ConcurrentHashMap<String, ReferenceCountExchangeClient>();
+
+    // 延迟连接的客户端缓存
     private final ConcurrentMap<String, LazyConnectExchangeClient> ghostClientMap = new ConcurrentHashMap<String, LazyConnectExchangeClient>();
+
+    // 用于服务导出的锁
     private final ConcurrentMap<String, Object> locks = new ConcurrentHashMap<String, Object>();
+
+    // 序列化优化器集合
     private final Set<String> optimizers = new ConcurrentHashSet<String>();
-    //consumer side export a stub service for dispatching event
-    //servicekey-stubmethods
+
+    // 存储存根服务方法，用于事件分发
     private final ConcurrentMap<String, String> stubServiceMethodsMap = new ConcurrentHashMap<String, String>();
+
+    /**
+     * 请求处理器，处理所有服务端接收到的请求
+     */
     private ExchangeHandler requestHandler = new ExchangeHandlerAdapter() {
 
+        /**
+         * 处理请求并返回响应
+         * @param channel 通信通道
+         * @param message 请求消息
+         * @return 响应结果
+         */
         @Override
         public Object reply(ExchangeChannel channel, Object message) throws RemotingException {
             if (message instanceof Invocation) {
                 Invocation inv = (Invocation) message;
+                // 获取服务提供者Invoker
                 Invoker<?> invoker = getInvoker(channel, inv);
-                // need to consider backward-compatibility if it's a callback
+                
+                // 处理回调服务的特殊情况
                 if (Boolean.TRUE.toString().equals(inv.getAttachments().get(IS_CALLBACK_SERVICE_INVOKE))) {
                     String methodsStr = invoker.getUrl().getParameters().get("methods");
                     boolean hasMethod = false;
@@ -100,6 +125,8 @@ public class DubboProtocol extends AbstractProtocol {
                         return null;
                     }
                 }
+                
+                // 设置远程地址并调用服务
                 RpcContext.getContext().setRemoteAddress(channel.getRemoteAddress());
                 return invoker.invoke(inv);
             }
@@ -158,10 +185,16 @@ public class DubboProtocol extends AbstractProtocol {
         }
     };
 
+    /**
+     * 构造函数，初始化单例
+     */
     public DubboProtocol() {
         INSTANCE = this;
     }
 
+    /**
+     * 获取DubboProtocol单例实例
+     */
     public static DubboProtocol getDubboProtocol() {
         if (INSTANCE == null) {
             ExtensionLoader.getExtensionLoader(Protocol.class).getExtension(DubboProtocol.NAME); // load
@@ -181,6 +214,9 @@ public class DubboProtocol extends AbstractProtocol {
         return exporterMap;
     }
 
+    /**
+     * 判断当前Channel是否为客户端（消费者）侧
+     */
     private boolean isClientSide(Channel channel) {
         InetSocketAddress address = channel.getRemoteAddress();
         URL url = channel.getUrl();
@@ -189,29 +225,62 @@ public class DubboProtocol extends AbstractProtocol {
                         .equals(NetUtils.filterLocalHost(address.getAddress().getHostAddress()));
     }
 
+    /**
+     * 根据Channel和调用信息获取对应的Invoker
+     * 
+     * 该方法用于在服务端处理请求时，根据请求的Channel和Invocation信息找到对应的服务提供者Invoker。
+     * 主要处理以下几种场景：
+     * 1. 普通服务调用：直接根据服务路径、版本、分组等信息查找对应的Exporter
+     * 2. 存根服务调用：处理客户端存根代理的调用，使用远程端口
+     * 3. 回调服务调用：处理客户端回调服务的调用，需要特殊处理服务路径
+     * 
+     * @param channel 通信通道，包含客户端和服务端的连接信息
+     * @param inv 调用信息，包含方法名、参数、附件信息等
+     * @return 对应的服务提供者Invoker
+     * @throws RemotingException 当找不到对应的服务时抛出异常
+     */
     Invoker<?> getInvoker(Channel channel, Invocation inv) throws RemotingException {
+        // 标记是否为回调服务调用
         boolean isCallBackServiceInvoke = false;
+        // 标记是否为存根服务调用
         boolean isStubServiceInvoke = false;
+        
+        // 默认使用本地端口（服务端端口）
         int port = channel.getLocalAddress().getPort();
+        // 获取服务路径，通常为接口名
         String path = inv.getAttachments().get(Constants.PATH_KEY);
-        // if it's callback service on client side
+        
+        // 检查是否为存根服务调用（客户端存根代理的调用）
+        // 存根服务调用通常用于事件通知等场景
         isStubServiceInvoke = Boolean.TRUE.toString().equals(inv.getAttachments().get(Constants.STUB_EVENT_KEY));
         if (isStubServiceInvoke) {
+            // 存根服务调用使用远程端口（客户端端口）
             port = channel.getRemoteAddress().getPort();
         }
-        //callback
+        
+        // 检查是否为回调服务调用
+        // 回调服务调用是指客户端作为服务提供者，服务端作为消费者的情况
         isCallBackServiceInvoke = isClientSide(channel) && !isStubServiceInvoke;
         if (isCallBackServiceInvoke) {
+            // 回调服务的路径需要拼接回调服务名
             path = inv.getAttachments().get(Constants.PATH_KEY) + "." + inv.getAttachments().get(Constants.CALLBACK_SERVICE_KEY);
+            // 标记为回调服务调用，用于后续处理
             inv.getAttachments().put(IS_CALLBACK_SERVICE_INVOKE, Boolean.TRUE.toString());
         }
+        
+        // 构建服务键，用于在exporterMap中查找对应的服务
+        // 服务键格式：port/path/version/group
         String serviceKey = serviceKey(port, path, inv.getAttachments().get(Constants.VERSION_KEY), inv.getAttachments().get(Constants.GROUP_KEY));
 
+        // 从exporterMap中获取对应的服务导出者
         DubboExporter<?> exporter = (DubboExporter<?>) exporterMap.get(serviceKey);
 
+        // 如果找不到对应的服务，抛出异常
+        // 可能的原因：版本不匹配、分组不匹配、服务未导出等
         if (exporter == null)
             throw new RemotingException(channel, "Not found exported service: " + serviceKey + " in " + exporterMap.keySet() + ", may be version or group mismatch " + ", channel: consumer: " + channel.getRemoteAddress() + " --> provider: " + channel.getLocalAddress() + ", message:" + inv);
 
+        // 返回服务提供者的Invoker
         return exporter.getInvoker();
     }
 
@@ -224,16 +293,22 @@ public class DubboProtocol extends AbstractProtocol {
         return DEFAULT_PORT;
     }
 
+    /**
+     * 暴露服务
+     * @param invoker 服务的执行体
+     * @return Exporter 服务暴露者
+     */
     @Override
     public <T> Exporter<T> export(Invoker<T> invoker) throws RpcException {
         URL url = invoker.getUrl();
 
-        // export service.
+        // 创建服务键
         String key = serviceKey(url);
+        // 创建并缓存服务暴露者
         DubboExporter<T> exporter = new DubboExporter<T>(invoker, key, exporterMap);
         exporterMap.put(key, exporter);
 
-        //export an stub service for dispatching event
+        // 处理存根事件支持
         Boolean isStubSupportEvent = url.getParameter(Constants.STUB_EVENT_KEY, Constants.DEFAULT_STUB_EVENT);
         Boolean isCallbackservice = url.getParameter(Constants.IS_CALLBACK_SERVICE, false);
         if (isStubSupportEvent && !isCallbackservice) {
@@ -248,11 +323,17 @@ public class DubboProtocol extends AbstractProtocol {
             }
         }
 
+        // 开启服务器
         openServer(url);
+        // 优化序列化
         optimizeSerialization(url);
         return exporter;
     }
 
+    /**
+     * 开启服务器
+     * @param url 服务地址
+     */
     private void openServer(URL url) {
         // find server.
         String key = url.getAddress();
@@ -269,6 +350,11 @@ public class DubboProtocol extends AbstractProtocol {
         }
     }
 
+    /**
+     * 创建服务器
+     * @param url 服务地址
+     * @return 交换服务器
+     */
     private ExchangeServer createServer(URL url) {
         // send readonly event when server closes, it's enabled by default
         url = url.addParameterIfAbsent(Constants.CHANNEL_READONLYEVENT_SENT_KEY, Boolean.TRUE.toString());
@@ -296,6 +382,10 @@ public class DubboProtocol extends AbstractProtocol {
         return server;
     }
 
+    /**
+     * 优化序列化过程
+     * @param url 服务地址
+     */
     private void optimizeSerialization(URL url) throws RpcException {
         String className = url.getParameter(Constants.OPTIMIZER_KEY, "");
         if (StringUtils.isEmpty(className) || optimizers.contains(className)) {
@@ -330,6 +420,12 @@ public class DubboProtocol extends AbstractProtocol {
         }
     }
 
+    /**
+     * 引用远程服务
+     * @param serviceType 服务类型
+     * @param url 服务地址
+     * @return 服务的本地代理
+     */
     @Override
     public <T> Invoker<T> refer(Class<T> serviceType, URL url) throws RpcException {
         optimizeSerialization(url);
@@ -339,6 +435,11 @@ public class DubboProtocol extends AbstractProtocol {
         return invoker;
     }
 
+    /**
+     * 获取客户端数组
+     * @param url 服务地址
+     * @return 客户端数组
+     */
     private ExchangeClient[] getClients(URL url) {
         // whether to share connection
         boolean service_share_connect = false;
@@ -361,7 +462,9 @@ public class DubboProtocol extends AbstractProtocol {
     }
 
     /**
-     * Get shared connection
+     * 获取共享连接
+     * @param url 服务地址
+     * @return 共享的客户端连接
      */
     private ExchangeClient getSharedClient(URL url) {
         String key = url.getAddress();
@@ -391,7 +494,9 @@ public class DubboProtocol extends AbstractProtocol {
     }
 
     /**
-     * Create new connection
+     * 初始化新的客户端连接
+     * @param url 服务地址
+     * @return 新的客户端连接
      */
     private ExchangeClient initClient(URL url) {
 
@@ -422,6 +527,9 @@ public class DubboProtocol extends AbstractProtocol {
         return client;
     }
 
+    /**
+     * 销毁协议，关闭所有服务器和客户端连接
+     */
     @Override
     public void destroy() {
         for (String key : new ArrayList<String>(serverMap.keySet())) {

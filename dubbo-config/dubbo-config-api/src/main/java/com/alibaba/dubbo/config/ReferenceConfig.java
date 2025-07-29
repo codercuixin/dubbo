@@ -60,9 +60,15 @@ import java.util.Set;
 import static com.alibaba.dubbo.common.utils.NetUtils.isInvalidLocalHost;
 
 /**
- * ReferenceConfig
+ * ReferenceConfig represents the configuration for a consumer to reference a remote service.
+ * It contains all the required configuration for service discovery, load balancing, and proxy creation.
+ * 
+ * Key responsibilities:
+ * 1. Holds consumer side configuration
+ * 2. Creates and manages service proxy
+ * 3. Handles service reference lifecycle
  *
- * @export
+ * @export Indicates this class can be exported as a service reference
  */
 public class ReferenceConfig<T> extends AbstractReferenceConfig {
 
@@ -187,20 +193,42 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
         ref = null;
     }
 
+    /**
+     * Initializes the ReferenceConfig.
+     * This method handles the complete initialization process of a service reference, including:
+     * 1. Interface validation and loading
+     * 2. Configuration loading and validation
+     * 3. URL resolution for direct connections
+     * 4. Configuration inheritance from consumer/module/application
+     * 5. Service metadata preparation
+     * 6. Proxy creation
+     * 
+     * The initialization follows this sequence:
+     * - Validates basic configuration (interface, etc.)
+     * - Loads configurations from different levels (consumer, module, application)
+     * - Resolves service URL (from system properties or resolve file)
+     * - Prepares service metadata and parameters
+     * - Creates service proxy
+     */
     private void init() {
         if (initialized) {
             return;
         }
         initialized = true;
+        // Validate interface configuration
         if (interfaceName == null || interfaceName.length() == 0) {
             throw new IllegalStateException("<dubbo:reference interface=\"\" /> interface not allow null!");
         }
-        // get consumer's global configuration
+        // Load consumer's global configuration and apply properties
         checkDefault();
         appendProperties(this);
+        
+        // Handle generic service configuration
         if (getGeneric() == null && getConsumer() != null) {
             setGeneric(getConsumer().getGeneric());
         }
+        
+        // Load interface class - use GenericService for generic calls, otherwise load the actual interface
         if (ProtocolUtils.isGeneric(getGeneric())) {
             interfaceClass = GenericService.class;
         } else {
@@ -212,6 +240,8 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
             }
             checkInterfaceAndMethods(interfaceClass, methods);
         }
+        
+        // Resolve service URL from system properties or dubbo-resolve.properties
         String resolve = System.getProperty(interfaceName);
         String resolveFile = null;
         if (resolve == null || resolve.length() == 0) {
@@ -240,6 +270,8 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
                 resolve = properties.getProperty(interfaceName);
             }
         }
+        
+        // Apply resolved URL if found
         if (resolve != null && resolve.length() > 0) {
             url = resolve;
             if (logger.isWarnEnabled()) {
@@ -250,6 +282,8 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
                 }
             }
         }
+        
+        // Inherit configurations from consumer, module, and application in that order
         if (consumer != null) {
             if (application == null) {
                 application = consumer.getApplication();
@@ -280,17 +314,25 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
                 monitor = application.getMonitor();
             }
         }
+        
+        // Perform various configuration checks
         checkApplication();
         checkStub(interfaceClass);
         checkMock(interfaceClass);
+        
+        // Prepare service metadata map and attributes
         Map<String, String> map = new HashMap<String, String>();
         Map<Object, Object> attributes = new HashMap<Object, Object>();
+        
+        // Add basic service metadata
         map.put(Constants.SIDE_KEY, Constants.CONSUMER_SIDE);
         map.put(Constants.DUBBO_VERSION_KEY, Version.getProtocolVersion());
         map.put(Constants.TIMESTAMP_KEY, String.valueOf(System.currentTimeMillis()));
         if (ConfigUtils.getPid() > 0) {
             map.put(Constants.PID_KEY, String.valueOf(ConfigUtils.getPid()));
         }
+        
+        // Add interface specific metadata
         if (!isGeneric()) {
             String revision = Version.getVersion(interfaceClass, version);
             if (revision != null && revision.length() > 0) {
@@ -306,10 +348,14 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
             }
         }
         map.put(Constants.INTERFACE_KEY, interfaceName);
+        
+        // Append various configuration parameters
         appendParameters(map, application);
         appendParameters(map, module);
         appendParameters(map, consumer, Constants.DEFAULT_KEY);
         appendParameters(map, this);
+        
+        // Handle method level configurations
         String prefix = StringUtils.getServiceKey(map);
         if (methods != null && !methods.isEmpty()) {
             for (MethodConfig method : methods) {
@@ -326,6 +372,7 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
             }
         }
 
+        // Set the IP address to be registered
         String hostToRegistry = ConfigUtils.getSystemProperty(Constants.DUBBO_IP_TO_REGISTRY);
         if (hostToRegistry == null || hostToRegistry.length() == 0) {
             hostToRegistry = NetUtils.getLocalHost();
@@ -334,22 +381,43 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
         }
         map.put(Constants.REGISTER_IP_KEY, hostToRegistry);
 
-        //attributes are stored by system context.
+        // Store attributes in system context and create service proxy
         StaticContext.getSystemContext().putAll(attributes);
         ref = createProxy(map);
+        
+        // Initialize consumer model for monitoring/management
         ConsumerModel consumerModel = new ConsumerModel(getUniqueServiceName(), this, ref, interfaceClass.getMethods());
         ApplicationModel.initConsumerModel(getUniqueServiceName(), consumerModel);
     }
 
+    /**
+     * Creates a proxy object for the remote service.
+     * This is a core method that handles both local (injvm) and remote service references.
+     *
+     * The process includes:
+     * 1. Determines whether to use local reference (injvm) or remote reference
+     * 2. For remote reference:
+     *    - Handles direct URL connections (peer-to-peer)
+     *    - Handles registry URLs (service discovery)
+     * 3. Creates invoker chain with cluster support
+     * 4. Creates the final service proxy
+     *
+     * @param map Configuration parameters for creating the proxy
+     * @return The proxy object that implements the service interface
+     */
     @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
     private T createProxy(Map<String, String> map) {
+        // Create temporary URL for protocol determination
         URL tmpUrl = new URL("temp", "localhost", 0, map);
+        
+        // Determine if should use local reference (injvm)
         final boolean isJvmRefer;
         if (isInjvm() == null) {
-            if (url != null && url.length() > 0) { // if a url is specified, don't do local reference
+            // If URL is specified, don't do local reference
+            if (url != null && url.length() > 0) {
                 isJvmRefer = false;
             } else if (InjvmProtocol.getInjvmProtocol().isInjvmRefer(tmpUrl)) {
-                // by default, reference local service if there is
+                // By default, reference local service if there is one
                 isJvmRefer = true;
             } else {
                 isJvmRefer = false;
@@ -359,13 +427,16 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
         }
 
         if (isJvmRefer) {
+            // Create local reference
             URL url = new URL(Constants.LOCAL_PROTOCOL, NetUtils.LOCALHOST, 0, interfaceClass.getName()).addParameters(map);
             invoker = refprotocol.refer(interfaceClass, url);
             if (logger.isInfoEnabled()) {
                 logger.info("Using injvm service " + interfaceClass.getName());
             }
         } else {
-            if (url != null && url.length() > 0) { // user specified URL, could be peer-to-peer address, or register center's address.
+            // Handle remote reference
+            if (url != null && url.length() > 0) {
+                // User specified URL - could be peer-to-peer address or registry center address
                 String[] us = Constants.SEMICOLON_SPLIT_PATTERN.split(url);
                 if (us != null && us.length > 0) {
                     for (String u : us) {
@@ -374,13 +445,16 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
                             url = url.setPath(interfaceName);
                         }
                         if (Constants.REGISTRY_PROTOCOL.equals(url.getProtocol())) {
+                            // For registry protocol, add refer parameters
                             urls.add(url.addParameterAndEncoded(Constants.REFER_KEY, StringUtils.toQueryString(map)));
                         } else {
+                            // For direct protocol
                             urls.add(ClusterUtils.mergeUrl(url, map));
                         }
                     }
                 }
-            } else { // assemble URL from register center's configuration
+            } else {
+                // Get URLs from registry centers
                 List<URL> us = loadRegistries(false);
                 if (us != null && !us.isEmpty()) {
                     for (URL u : us) {
@@ -392,54 +466,60 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
                     }
                 }
                 if (urls.isEmpty()) {
-                    throw new IllegalStateException("No such any registry to reference " + interfaceName + " on the consumer " + NetUtils.getLocalHost() + " use dubbo version " + Version.getVersion() + ", please config <dubbo:registry address=\"...\" /> to your spring config.");
+                    throw new IllegalStateException("No such any registry to reference " + interfaceName);
                 }
             }
 
+            // Create invoker based on URL count
             if (urls.size() == 1) {
+                // Single URL - create single invoker
                 invoker = refprotocol.refer(interfaceClass, urls.get(0));
             } else {
+                // Multiple URLs - create invoker list and join with cluster
                 List<Invoker<?>> invokers = new ArrayList<Invoker<?>>();
                 URL registryURL = null;
                 for (URL url : urls) {
                     invokers.add(refprotocol.refer(interfaceClass, url));
                     if (Constants.REGISTRY_PROTOCOL.equals(url.getProtocol())) {
-                        registryURL = url; // use last registry url
+                        registryURL = url; // Use last registry URL
                     }
                 }
-                if (registryURL != null) { // registry url is available
-                    // use AvailableCluster only when register's cluster is available
+                if (registryURL != null) {
+                    // Registry URL available - use AvailableCluster
                     URL u = registryURL.addParameterIfAbsent(Constants.CLUSTER_KEY, AvailableCluster.NAME);
                     invoker = cluster.join(new StaticDirectory(u, invokers));
-                } else { // not a registry url
+                } else {
+                    // Not a registry URL - use default cluster
                     invoker = cluster.join(new StaticDirectory(invokers));
                 }
             }
         }
 
+        // Check if service is available
         Boolean c = check;
         if (c == null && consumer != null) {
             c = consumer.isCheck();
         }
         if (c == null) {
-            c = true; // default true
+            c = true; // Default true
         }
         if (c && !invoker.isAvailable()) {
-            // make it possible for consumer to retry later if provider is temporarily unavailable
+            // Service unavailable - throw exception
             initialized = false;
             final String serviceKey = (group == null ? "" : group + "/") + interfaceName + (version == null ? "" :
                     ":" + version);
             Set<ConsumerInvokerWrapper> consumerInvoker = ProviderConsumerRegTable.getConsumerInvoker(serviceKey);
             if (consumerInvoker != Collections.<ConsumerInvokerWrapper>emptySet()) {
-                //since create proxy error , so we must be the first consumer. Simply clear ConcurrentHashSet
                 consumerInvoker.clear();
             }
-            throw new IllegalStateException("Failed to check the status of the service " + interfaceName + ". No provider available for the service " + serviceKey + " from the url " + invoker.getUrl() + " to the consumer " + NetUtils.getLocalHost() + " use dubbo version " + Version.getVersion());
+            throw new IllegalStateException("Failed to check the status of the service " + interfaceName);
         }
+        
         if (logger.isInfoEnabled()) {
             logger.info("Refer dubbo service " + interfaceClass.getName() + " from url " + invoker.getUrl());
         }
-        // create service proxy
+        
+        // Create and return the final service proxy
         return (T) proxyFactory.getProxy(invoker);
     }
 
