@@ -21,7 +21,18 @@ import com.alibaba.dubbo.common.extension.Adaptive;
 import com.alibaba.dubbo.common.extension.SPI;
 
 /**
- * Protocol. (API/SPI, Singleton, ThreadSafe)
+ * Protocol interface for RPC communication. (API/SPI, Singleton, ThreadSafe)
+ * 
+ * This interface defines the core contract for all RPC protocols in Dubbo:
+ * 1. Service export - making services available for remote invocation
+ * 2. Service reference - creating proxies for remote services
+ * 3. Protocol lifecycle management
+ * 
+ * Each protocol implementation (e.g. dubbo, http, hessian) must be thread-safe 
+ * and should support singleton mode.
+ * 
+ * @see com.alibaba.dubbo.rpc.Invoker
+ * @see com.alibaba.dubbo.rpc.Exporter
  */
 @SPI("dubbo")
 public interface Protocol {

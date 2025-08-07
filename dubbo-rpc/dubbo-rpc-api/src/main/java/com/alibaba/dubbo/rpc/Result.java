@@ -19,7 +19,15 @@ package com.alibaba.dubbo.rpc;
 import java.util.Map;
 
 /**
- * RPC invoke result. (API, Prototype, NonThreadSafe)
+ * Represents the result of an RPC invocation, including return value, exception and attachments. (API, Prototype, NonThreadSafe)
+ * 
+ * This interface encapsulates all possible outcomes of a remote method call:
+ * 1. Normal return value (accessed via getValue())
+ * 2. Exception if the call failed (accessed via getException())
+ * 3. Additional metadata in the form of attachments
+ * 
+ * The result object is not thread-safe as it represents a single invocation result
+ * and should not be shared between threads.
  *
  * @serial Don't change the class name and package name.
  * @see com.alibaba.dubbo.rpc.Invoker#invoke(Invocation)
@@ -28,39 +36,53 @@ import java.util.Map;
 public interface Result {
 
     /**
-     * Get invoke result.
+     * Gets the return value of the RPC invocation.
+     * 
+     * This method returns the actual result returned by the remote service method.
+     * If the invocation threw an exception, this method returns null and the
+     * exception can be retrieved via getException().
      *
-     * @return result. if no result return null.
+     * @return The invocation result value, or null if there was an exception or no return value
      */
     Object getValue();
 
     /**
-     * Get exception.
+     * Gets the exception that occurred during the RPC invocation, if any.
+     * 
+     * If the remote service method threw an exception, or if there was a problem
+     * during the RPC call itself (like network errors), this method returns that
+     * exception. For normal successful calls, this returns null.
      *
-     * @return exception. if no exception return null.
+     * @return The exception that occurred, or null if the call was successful
      */
     Throwable getException();
 
     /**
-     * Has exception.
+     * Checks if the invocation resulted in an exception.
+     * 
+     * This is a convenience method that returns true if getException() would
+     * return a non-null value. It's useful for quick checks before attempting
+     * to access the result value.
      *
-     * @return has exception.
+     * @return true if the invocation resulted in an exception, false otherwise
      */
     boolean hasException();
 
     /**
-     * Recreate.
-     * <p>
-     * <code>
+     * Recreates the invocation result by either returning the value or throwing the exception.
+     * 
+     * This method provides a convenient way to handle the result in a way that matches
+     * local method call semantics. It follows this logic:
+     * <pre>
      * if (hasException()) {
-     * throw getException();
+     *     throw getException();
      * } else {
-     * return getValue();
+     *     return getValue();
      * }
-     * </code>
+     * </pre>
      *
-     * @return result.
-     * @throws if has exception throw it.
+     * @return The invocation result value if the call was successful
+     * @throws Throwable The exception that occurred during the invocation if there was one
      */
     Object recreate() throws Throwable;
 
@@ -73,23 +95,36 @@ public interface Result {
 
 
     /**
-     * get attachments.
+     * Gets all attachments associated with this invocation result.
+     * 
+     * Attachments can be used to carry additional metadata from the provider
+     * back to the consumer, such as tracing data or custom response headers.
+     * These attachments are separate from the main return value.
      *
-     * @return attachments.
+     * @return A Map containing all attachments with string keys and values
      */
     Map<String, String> getAttachments();
 
     /**
-     * get attachment by key.
+     * Gets a specific attachment value by its key.
+     * 
+     * This is a convenience method to get a single attachment value
+     * without having to handle the map directly.
      *
-     * @return attachment value.
+     * @param key The key of the attachment to retrieve
+     * @return The attachment value associated with the key, or null if not found
      */
     String getAttachment(String key);
 
     /**
-     * get attachment by key with default value.
+     * Gets a specific attachment value by its key, returning a default value if not found.
+     * 
+     * This is a convenience method similar to getAttachment(String), but allows
+     * specifying a default value to return when the key is not found.
      *
-     * @return attachment value.
+     * @param key The key of the attachment to retrieve
+     * @param defaultValue The value to return if the key is not found
+     * @return The attachment value associated with the key, or defaultValue if not found
      */
     String getAttachment(String key, String defaultValue);
 

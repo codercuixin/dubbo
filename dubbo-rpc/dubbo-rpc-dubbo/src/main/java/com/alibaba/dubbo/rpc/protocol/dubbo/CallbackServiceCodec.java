@@ -262,36 +262,59 @@ class CallbackServiceCodec {
         }
     }
 
+    /**
+     * 解码调用参数，处理回调服务参数的特殊情况
+     * 
+     * @param channel 通信通道
+     * @param inv RPC调用对象
+     * @param pts 参数类型数组
+     * @param paraIndex 当前处理的参数索引
+     * @param inObject 原始参数对象
+     * @return 处理后的参数对象
+     * @throws IOException 当解码过程中发生IO异常时
+     */
     public static Object decodeInvocationArgument(Channel channel, RpcInvocation inv, Class<?>[] pts, int paraIndex, Object inObject) throws IOException {
-        // if it's a callback, create proxy on client side, callback interface on client side can be invoked through channel
-        // need get URL from channel and env when decode
+        // 如果是回调参数，需要在客户端创建代理
+        // 解码时需要从channel和环境中获取URL
         URL url = null;
         try {
+            // 从Dubbo协议中获取调用者的URL
             url = DubboProtocol.getDubboProtocol().getInvoker(channel, inv).getUrl();
         } catch (RemotingException e) {
             if (logger.isInfoEnabled()) {
                 logger.info(e.getMessage(), e);
             }
+            // 获取URL失败，直接返回原始参数
             return inObject;
         }
+
+        // 检查参数是否为回调参数
         byte callbackstatus = isCallBack(url, inv.getMethodName(), paraIndex);
         switch (callbackstatus) {
             case CallbackServiceCodec.CALLBACK_NONE:
+                // 非回调参数，直接返回原始值
                 return inObject;
             case CallbackServiceCodec.CALLBACK_CREATE:
                 try {
-                    return referOrdestroyCallbackService(channel, url, pts[paraIndex], inv, Integer.parseInt(inv.getAttachment(INV_ATT_CALLBACK_KEY + paraIndex)), true);
+                    // 创建回调服务的代理对象
+                    // 从附加参数中获取回调服务的实例ID
+                    return referOrdestroyCallbackService(channel, url, pts[paraIndex], inv, 
+                            Integer.parseInt(inv.getAttachment(INV_ATT_CALLBACK_KEY + paraIndex)), true);
                 } catch (Exception e) {
                     logger.error(e.getMessage(), e);
                     throw new IOException(StringUtils.toString(e));
                 }
             case CallbackServiceCodec.CALLBACK_DESTROY:
                 try {
-                    return referOrdestroyCallbackService(channel, url, pts[paraIndex], inv, Integer.parseInt(inv.getAttachment(INV_ATT_CALLBACK_KEY + paraIndex)), false);
+                    // 销毁回调服务
+                    // 从附加参数中获取回调服务的实例ID
+                    return referOrdestroyCallbackService(channel, url, pts[paraIndex], inv,
+                            Integer.parseInt(inv.getAttachment(INV_ATT_CALLBACK_KEY + paraIndex)), false);
                 } catch (Exception e) {
                     throw new IOException(StringUtils.toString(e));
                 }
             default:
+                // 未知状态，返回原始值
                 return inObject;
         }
     }

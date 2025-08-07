@@ -19,39 +19,97 @@ package com.alibaba.dubbo.remoting.exchange;
 import com.alibaba.dubbo.remoting.RemotingException;
 
 /**
- * Future. (API/SPI, Prototype, ThreadSafe)
- *
+ * Represents a future response from an asynchronous request. (API/SPI, Prototype, ThreadSafe)
+ * 
+ * This interface provides both synchronous and asynchronous ways to handle responses:
+ * 1. Synchronous: Using get() methods to wait for the response
+ * 2. Asynchronous: Using setCallback() to handle the response when it arrives
+ * 
+ * Key features:
+ * - Thread-safe response handling
+ * - Timeout support
+ * - Callback mechanism
+ * - Completion status checking
+ * 
+ * Typical usage:
+ * <pre>
+ * // Synchronous
+ * ResponseFuture future = channel.request(request);
+ * try {
+ *     Object result = future.get(timeout);
+ *     // handle result
+ * } catch (RemotingException e) {
+ *     // handle exception
+ * }
+ * 
+ * // Asynchronous
+ * future.setCallback(new ResponseCallback() {
+ *     public void done(Object result) {
+ *         // handle result
+ *     }
+ *     public void caught(Throwable error) {
+ *         // handle error
+ *     }
+ * });
+ * </pre>
+ * 
  * @see com.alibaba.dubbo.remoting.exchange.ExchangeChannel#request(Object)
  * @see com.alibaba.dubbo.remoting.exchange.ExchangeChannel#request(Object, int)
+ * @see ResponseCallback
  */
 public interface ResponseFuture {
 
     /**
-     * get result.
+     * Gets the response result, waiting indefinitely if necessary.
+     * 
+     * This method blocks until:
+     * 1. The response is received
+     * 2. An error occurs
+     * 3. The thread is interrupted
      *
-     * @return result.
+     * @return The response result
+     * @throws RemotingException If there is a network or protocol error
      */
     Object get() throws RemotingException;
 
     /**
-     * get result with the specified timeout.
+     * Gets the response result, waiting up to the specified timeout duration.
+     * 
+     * This method blocks until:
+     * 1. The response is received
+     * 2. The timeout period elapses
+     * 3. An error occurs
+     * 4. The thread is interrupted
      *
-     * @param timeoutInMillis timeout.
-     * @return result.
+     * @param timeoutInMillis Maximum time to wait in milliseconds
+     * @return The response result
+     * @throws RemotingException If there is a network error or the timeout elapses
      */
     Object get(int timeoutInMillis) throws RemotingException;
 
     /**
-     * set callback.
+     * Sets a callback for asynchronous response handling.
+     * 
+     * The callback will be invoked when:
+     * 1. The response is received (done method)
+     * 2. An error occurs (caught method)
+     * 
+     * This method provides a non-blocking way to handle responses.
      *
-     * @param callback
+     * @param callback The callback to handle the response or error
      */
     void setCallback(ResponseCallback callback);
 
     /**
-     * check is done.
+     * Checks if the response has been received.
+     * 
+     * This method can be used to:
+     * 1. Poll for completion without blocking
+     * 2. Check if it's safe to call get() without blocking
+     * 3. Determine if a request has completed or failed
      *
-     * @return done or not.
+     * @return true if the response is available or an error occurred,
+     *         false if still waiting for the response
      */
     boolean isDone();
 

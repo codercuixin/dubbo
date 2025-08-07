@@ -19,8 +19,19 @@ package com.alibaba.dubbo.rpc;
 import com.alibaba.dubbo.common.Node;
 
 /**
- * Invoker. (API/SPI, Prototype, ThreadSafe)
+ * Invoker is the core abstraction in Dubbo. It represents an executable service instance
+ * for both provider and consumer side. (API/SPI, Prototype, ThreadSafe)
+ * 
+ * For a provider, an Invoker wraps the service implementation and handles RPC requests.
+ * For a consumer, an Invoker represents a proxy that sends RPC requests to remote providers.
+ * 
+ * The lifecycle of an Invoker ties to the service it represents:
+ * 1. Created by Protocol implementation when service is exported/referred
+ * 2. Destroyed when service is unexported/unreferred
+ * 
+ * Thread-safety is required since an Invoker will process requests concurrently.
  *
+ * @param <T> The service interface type
  * @see com.alibaba.dubbo.rpc.Protocol#refer(Class, com.alibaba.dubbo.common.URL)
  * @see com.alibaba.dubbo.rpc.InvokerListener
  * @see com.alibaba.dubbo.rpc.protocol.AbstractInvoker
@@ -28,18 +39,31 @@ import com.alibaba.dubbo.common.Node;
 public interface Invoker<T> extends Node {
 
     /**
-     * get service interface.
+     * Gets the interface of the service being invoked.
+     * 
+     * This method returns the actual service interface class that this Invoker
+     * is handling. For example, if this Invoker is for a UserService,
+     * this method will return the UserService.class.
      *
-     * @return service interface.
+     * @return The service interface class
      */
     Class<T> getInterface();
 
     /**
-     * invoke.
+     * Executes the RPC invocation.
+     * 
+     * This is the core method that handles RPC calls. For providers, it executes
+     * the actual service method. For consumers, it sends the request to the remote provider.
+     * 
+     * The implementation should handle the following:
+     * 1. Parameter validation
+     * 2. Service method invocation or remote call
+     * 3. Exception handling and conversion
+     * 4. Result serialization/deserialization
      *
-     * @param invocation
-     * @return result
-     * @throws RpcException
+     * @param invocation Contains the method name, parameter types and values to be invoked
+     * @return The invocation result, contains the actual return value or exception
+     * @throws RpcException when any error occurs during the invocation, such as network errors
      */
     Result invoke(Invocation invocation) throws RpcException;
 

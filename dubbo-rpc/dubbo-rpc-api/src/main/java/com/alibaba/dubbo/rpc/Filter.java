@@ -19,25 +19,53 @@ package com.alibaba.dubbo.rpc;
 import com.alibaba.dubbo.common.extension.SPI;
 
 /**
- * Filter. (SPI, Singleton, ThreadSafe)
+ * Filter interface for intercepting RPC invocations. (SPI, Singleton, ThreadSafe)
+ * 
+ * Filters form an intercepting chain around the actual RPC invocation:
+ * 1. They can perform custom logic before and after the actual invocation
+ * 2. They can modify the invocation parameters and result
+ * 3. They can handle or transform exceptions
+ * 
+ * Common use cases include:
+ * - Authentication and authorization
+ * - Logging and monitoring
+ * - Request/response validation
+ * - Caching
+ * - Rate limiting
+ * 
+ * Filters must be thread-safe as they are typically shared between requests.
+ * 
+ * @see com.alibaba.dubbo.rpc.Invoker
+ * @see com.alibaba.dubbo.rpc.Invocation
  */
 @SPI
 public interface Filter {
 
     /**
-     * do invoke filter.
-     * <p>
-     * <code>
-     * // before filter
-     * Result result = invoker.invoke(invocation);
-     * // after filter
-     * return result;
-     * </code>
+     * Intercepts the RPC invocation and provides a chance to perform custom logic.
+     * 
+     * A typical filter implementation follows this pattern:
+     * <pre>
+     * public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
+     *     // Pre-processing logic (e.g. logging, validation)
+     *     try {
+     *         // Proceed with the invocation
+     *         Result result = invoker.invoke(invocation);
+     *         // Post-processing logic for successful result
+     *         return result;
+     *     } catch (RpcException e) {
+     *         // Exception handling logic
+     *         throw e;
+     *     } finally {
+     *         // Cleanup logic if needed
+     *     }
+     * }
+     * </pre>
      *
-     * @param invoker    service
-     * @param invocation invocation.
-     * @return invoke result.
-     * @throws RpcException
+     * @param invoker The invoker that represents the target service
+     * @param invocation The invocation that contains the method call details
+     * @return The result of the RPC invocation, possibly modified by the filter
+     * @throws RpcException If any error occurs during filter processing
      * @see com.alibaba.dubbo.rpc.Invoker#invoke(Invocation)
      */
     Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException;

@@ -19,9 +19,26 @@ package com.alibaba.dubbo.remoting.exchange;
 import com.alibaba.dubbo.remoting.Client;
 
 /**
- * ExchangeClient. (API/SPI, Prototype, ThreadSafe)
- *
- *
+ * Client interface that combines request-response capabilities with client functionality. (API/SPI, Prototype, ThreadSafe)
+ * 
+ * This interface merges the capabilities of Client and ExchangeChannel:
+ * 1. Client features:
+ *    - Connection management (connect, disconnect, reconnect)
+ *    - Client-side configuration
+ *    - Connection monitoring
+ * 2. ExchangeChannel features:
+ *    - Request-response messaging
+ *    - Asynchronous operations
+ *    - Message handling
+ * 
+ * ExchangeClient is typically used by Dubbo consumers to:
+ * - Establish and maintain connections to providers
+ * - Send requests and handle responses
+ * - Monitor connection status
+ * - Support both synchronous and asynchronous operations
+ * 
+ * @see com.alibaba.dubbo.remoting.Client
+ * @see ExchangeChannel
  */
 public interface ExchangeClient extends Client, ExchangeChannel {
 

@@ -21,17 +21,45 @@ import com.alibaba.dubbo.remoting.RemotingException;
 import com.alibaba.dubbo.remoting.telnet.TelnetHandler;
 
 /**
- * ExchangeHandler. (API, Prototype, ThreadSafe)
+ * Handler for processing request-response style messages. (API, Prototype, ThreadSafe)
+ * 
+ * This interface combines capabilities from both ChannelHandler and TelnetHandler:
+ * 1. Basic channel event handling (connect, disconnect, send, receive)
+ * 2. Telnet command processing for remote management
+ * 3. Request-response message handling
+ * 
+ * ExchangeHandler is a key component in Dubbo's remoting layer:
+ * - It processes business requests and returns responses
+ * - It handles connection lifecycle events
+ * - It supports telnet access for administration
+ * 
+ * Implementations must be thread-safe as they will be called concurrently.
+ * 
+ * @see com.alibaba.dubbo.remoting.ChannelHandler
+ * @see com.alibaba.dubbo.remoting.telnet.TelnetHandler
+ * @see ExchangeChannel
  */
 public interface ExchangeHandler extends ChannelHandler, TelnetHandler {
 
     /**
-     * reply.
+     * Processes a request and returns a response.
+     * 
+     * This method is the core of request-response processing:
+     * 1. It receives a request from a remote peer
+     * 2. Processes the request according to business logic
+     * 3. Returns a response that will be sent back to the requester
+     * 
+     * The implementation should handle these aspects:
+     * - Parameter validation
+     * - Request deserialization
+     * - Business logic execution
+     * - Response serialization
+     * - Error handling
      *
-     * @param channel
-     * @param request
-     * @return response
-     * @throws RemotingException
+     * @param channel The exchange channel that received the request
+     * @param request The request object to process
+     * @return The response object that will be sent back to the requester
+     * @throws RemotingException If any error occurs during request processing
      */
     Object reply(ExchangeChannel channel, Object request) throws RemotingException;
 
