@@ -25,8 +25,8 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * LeastActiveLoadBalance
- *
+ * 最少活跃数负载均衡实现。
+ * 优先选择当前处理请求数最少的Invoker，若有多个则按权重随机。
  */
 public class LeastActiveLoadBalance extends AbstractLoadBalance {
 
@@ -34,6 +34,9 @@ public class LeastActiveLoadBalance extends AbstractLoadBalance {
 
     private final Random random = new Random();
 
+    /**
+     * 选择一个活跃数最少的Invoker，若有多个则按权重随机。
+     */
     @Override
     protected <T> Invoker<T> doSelect(List<Invoker<T>> invokers, URL url, Invocation invocation) {
         int length = invokers.size(); // Number of invokers

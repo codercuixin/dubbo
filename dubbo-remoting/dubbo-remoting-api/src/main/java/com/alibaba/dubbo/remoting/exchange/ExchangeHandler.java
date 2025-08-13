@@ -21,19 +21,19 @@ import com.alibaba.dubbo.remoting.RemotingException;
 import com.alibaba.dubbo.remoting.telnet.TelnetHandler;
 
 /**
- * Handler for processing request-response style messages. (API, Prototype, ThreadSafe)
+ * 用于处理请求-响应式消息的处理器。(API, Prototype, ThreadSafe)
  * 
- * This interface combines capabilities from both ChannelHandler and TelnetHandler:
- * 1. Basic channel event handling (connect, disconnect, send, receive)
- * 2. Telnet command processing for remote management
- * 3. Request-response message handling
+ * 该接口结合了ChannelHandler和TelnetHandler的功能：
+ * 1. 基本的通道事件处理（连接、断开、发送、接收）
+ * 2. 用于远程管理的Telnet命令处理
+ * 3. 请求-响应消息处理
  * 
- * ExchangeHandler is a key component in Dubbo's remoting layer:
- * - It processes business requests and returns responses
- * - It handles connection lifecycle events
- * - It supports telnet access for administration
+ * ExchangeHandler是Dubbo远程通信层的关键组件：
+ * - 处理业务请求并返回响应
+ * - 处理连接生命周期事件
+ * - 支持通过telnet进行管理
  * 
- * Implementations must be thread-safe as they will be called concurrently.
+ * 实现必须是线程安全的，因为它们会被并发调用。
  * 
  * @see com.alibaba.dubbo.remoting.ChannelHandler
  * @see com.alibaba.dubbo.remoting.telnet.TelnetHandler
@@ -42,24 +42,24 @@ import com.alibaba.dubbo.remoting.telnet.TelnetHandler;
 public interface ExchangeHandler extends ChannelHandler, TelnetHandler {
 
     /**
-     * Processes a request and returns a response.
+     * 处理请求并返回响应。
      * 
-     * This method is the core of request-response processing:
-     * 1. It receives a request from a remote peer
-     * 2. Processes the request according to business logic
-     * 3. Returns a response that will be sent back to the requester
+     * 此方法是请求-响应处理的核心：
+     * 1. 接收来自远程对等方的请求
+     * 2. 根据业务逻辑处理请求
+     * 3. 返回将发送回请求方的响应
      * 
-     * The implementation should handle these aspects:
-     * - Parameter validation
-     * - Request deserialization
-     * - Business logic execution
-     * - Response serialization
-     * - Error handling
+     * 实现应处理以下方面：
+     * - 参数验证
+     * - 请求反序列化
+     * - 业务逻辑执行
+     * - 响应序列化
+     * - 错误处理
      *
-     * @param channel The exchange channel that received the request
-     * @param request The request object to process
-     * @return The response object that will be sent back to the requester
-     * @throws RemotingException If any error occurs during request processing
+     * @param channel 接收请求的交换通道
+     * @param request 要处理的请求对象
+     * @return 将发送回请求方的响应对象
+     * @throws RemotingException 如果在请求处理过程中发生任何错误
      */
     Object reply(ExchangeChannel channel, Object request) throws RemotingException;
 

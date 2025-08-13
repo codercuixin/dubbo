@@ -29,13 +29,35 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * TagRouter
+ * 基于标签的路由器
+ * 
+ * 该路由器用于实现基于标签的服务路由，主要用于以下场景：
+ * 1. 服务分组：将服务提供者按标签分组，消费者可以指定调用特定标签的服务
+ * 2. 灰度发布：通过标签区分新旧版本，实现灰度发布
+ * 3. 环境隔离：通过标签区分不同环境（如测试、预发布等）
+ * 
+ * 路由规则：
+ * 1. 优先调用与消费者具有相同标签的提供者
+ * 2. 如果没有找到匹配的标签，且不强制使用标签，则降级为调用无标签的提供者
+ * 3. 如果强制使用标签且没有找到匹配的提供者，则返回空列表
  */
 public class TagRouter extends AbstractRouter {
 
+    /**
+     * 路由器的默认优先级
+     */
     private static final int DEFAULT_PRIORITY = 100;
+
+    /**
+     * 路由器的默认URL
+     * 用于初始化路由器，并设置为运行时动态路由
+     */
     private static final URL ROUTER_URL = new URL("tag", Constants.ANYHOST_VALUE, 0, Constants.ANY_VALUE).addParameters(Constants.RUNTIME_KEY, "true");
 
+    /**
+     * 构造函数
+     * 初始化路由器的URL和优先级
+     */
     public TagRouter() {
         this.url = ROUTER_URL;
         this.priority = url.getParameter(Constants.PRIORITY_KEY, DEFAULT_PRIORITY);
@@ -46,6 +68,15 @@ public class TagRouter extends AbstractRouter {
         return url;
     }
 
+    /**
+     * 根据标签进行服务路由
+     * 
+     * @param invokers 原始的服务提供者列表
+     * @param url 消费者的URL
+     * @param invocation 调用信息
+     * @return 经过标签路由筛选后的服务提供者列表
+     * @throws RpcException 路由过程出现异常
+     */
     @Override
     public <T> List<Invoker<T>> route(List<Invoker<T>> invokers, URL url, Invocation invocation) throws RpcException {
         // filter

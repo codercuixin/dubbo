@@ -19,36 +19,36 @@ package com.alibaba.dubbo.remoting.exchange;
 import com.alibaba.dubbo.remoting.RemotingException;
 
 /**
- * Represents a future response from an asynchronous request. (API/SPI, Prototype, ThreadSafe)
+ * 表示异步请求的未来响应。(API/SPI, Prototype, ThreadSafe)
  * 
- * This interface provides both synchronous and asynchronous ways to handle responses:
- * 1. Synchronous: Using get() methods to wait for the response
- * 2. Asynchronous: Using setCallback() to handle the response when it arrives
+ * 该接口提供同步和异步两种方式处理响应：
+ * 1. 同步：使用get()方法等待响应
+ * 2. 异步：使用setCallback()在响应到达时处理
  * 
- * Key features:
- * - Thread-safe response handling
- * - Timeout support
- * - Callback mechanism
- * - Completion status checking
+ * 主要特性：
+ * - 线程安全的响应处理
+ * - 超时支持
+ * - 回调机制
+ * - 完成状态检查
  * 
- * Typical usage:
+ * 典型用法：
  * <pre>
- * // Synchronous
+ * // 同步方式
  * ResponseFuture future = channel.request(request);
  * try {
  *     Object result = future.get(timeout);
- *     // handle result
+ *     // 处理结果
  * } catch (RemotingException e) {
- *     // handle exception
+ *     // 处理异常
  * }
  * 
- * // Asynchronous
+ * // 异步方式
  * future.setCallback(new ResponseCallback() {
  *     public void done(Object result) {
- *         // handle result
+ *         // 处理结果
  *     }
  *     public void caught(Throwable error) {
- *         // handle error
+ *         // 处理错误
  *     }
  * });
  * </pre>
@@ -60,56 +60,56 @@ import com.alibaba.dubbo.remoting.RemotingException;
 public interface ResponseFuture {
 
     /**
-     * Gets the response result, waiting indefinitely if necessary.
+     * 获取响应结果，如果需要则无限期等待。
      * 
-     * This method blocks until:
-     * 1. The response is received
-     * 2. An error occurs
-     * 3. The thread is interrupted
+     * 此方法会阻塞直到：
+     * 1. 收到响应
+     * 2. 发生错误
+     * 3. 线程被中断
      *
-     * @return The response result
-     * @throws RemotingException If there is a network or protocol error
+     * @return 响应结果
+     * @throws RemotingException 如果发生网络或协议错误
      */
     Object get() throws RemotingException;
 
     /**
-     * Gets the response result, waiting up to the specified timeout duration.
+     * 获取响应结果，最多等待指定的超时时间。
      * 
-     * This method blocks until:
-     * 1. The response is received
-     * 2. The timeout period elapses
-     * 3. An error occurs
-     * 4. The thread is interrupted
+     * 此方法会阻塞直到：
+     * 1. 收到响应
+     * 2. 超时时间到期
+     * 3. 发生错误
+     * 4. 线程被中断
      *
-     * @param timeoutInMillis Maximum time to wait in milliseconds
-     * @return The response result
-     * @throws RemotingException If there is a network error or the timeout elapses
+     * @param timeoutInMillis 最大等待时间（毫秒）
+     * @return 响应结果
+     * @throws RemotingException 如果发生网络错误或超时
      */
     Object get(int timeoutInMillis) throws RemotingException;
 
     /**
-     * Sets a callback for asynchronous response handling.
+     * 设置用于异步响应处理的回调。
      * 
-     * The callback will be invoked when:
-     * 1. The response is received (done method)
-     * 2. An error occurs (caught method)
+     * 回调会在以下情况被调用：
+     * 1. 收到响应时（done方法）
+     * 2. 发生错误时（caught方法）
      * 
-     * This method provides a non-blocking way to handle responses.
+     * 此方法提供了一种非阻塞的方式来处理响应。
      *
-     * @param callback The callback to handle the response or error
+     * @param callback 用于处理响应或错误的回调
      */
     void setCallback(ResponseCallback callback);
 
     /**
-     * Checks if the response has been received.
+     * 检查是否已收到响应。
      * 
-     * This method can be used to:
-     * 1. Poll for completion without blocking
-     * 2. Check if it's safe to call get() without blocking
-     * 3. Determine if a request has completed or failed
+     * 此方法可用于：
+     * 1. 在不阻塞的情况下轮询完成状态
+     * 2. 检查是否可以安全地调用get()而不会阻塞
+     * 3. 判断请求是否已完成或失败
      *
-     * @return true if the response is available or an error occurred,
-     *         false if still waiting for the response
+     * @return 如果响应已到达或发生错误则返回true，
+     *         如果仍在等待响应则返回false
      */
     boolean isDone();
 

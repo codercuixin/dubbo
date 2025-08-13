@@ -39,31 +39,82 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * AbstractClusterInvoker
- *
+ * 集群调用器的抽象实现类。
+ * <p>
+ * 该类实现了集群调用的核心逻辑，包括：
+ * <ul>
+ * <li>服务目录管理：维护服务提供者列表</li>
+ * <li>粘滞连接：支持将请求粘滞到同一个服务提供者</li>
+ * <li>可用性检查：在调用前检查服务提供者是否可用</li>
+ * <li>负载均衡：使用负载均衡策略选择服务提供者</li>
+ * <li>失败重试：支持调用失败后重新选择服务提供者</li>
+ * </ul>
+ * <p>
+ * 该类是一个模板类，具体的调用策略由子类实现，常见的实现包括：
+ * <ul>
+ * <li>FailoverClusterInvoker - 失败自动切换</li>
+ * <li>FailfastClusterInvoker - 快速失败</li>
+ * <li>FailsafeClusterInvoker - 失败安全</li>
+ * <li>FailbackClusterInvoker - 失败自动恢复</li>
+ * <li>ForkingClusterInvoker - 并行调用</li>
+ * </ul>
+ * 
+ * @param <T> 服务接口类型
  */
 public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
 
+    /**
+     * 日志记录器
+     */
     private static final Logger logger = LoggerFactory
             .getLogger(AbstractClusterInvoker.class);
+
+    /**
+     * 服务目录，维护了所有服务提供者列表
+     */
     protected final Directory<T> directory;
 
+    /**
+     * 是否在调用时检查服务提供者是否可用
+     */
     protected final boolean availablecheck;
 
+    /**
+     * 标记该调用器是否已被销毁
+     */
     private AtomicBoolean destroyed = new AtomicBoolean(false);
 
+    /**
+     * 粘滞连接的服务提供者。
+     * <p>
+     * 如果开启了粘滞连接特性（sticky=true），则会将调用请求发送到同一个服务提供者。
+     * 粘滞连接特性仅在服务提供者可用且未被选择时启用。
+     */
     private volatile Invoker<T> stickyInvoker = null;
 
+    /**
+     * 使用服务目录构造集群调用器。
+     *
+     * @param directory 服务目录
+     */
     public AbstractClusterInvoker(Directory<T> directory) {
         this(directory, directory.getUrl());
     }
 
+    /**
+     * 使用服务目录和URL构造集群调用器。
+     *
+     * @param directory 服务目录
+     * @param url 服务URL，包含了集群调用的配置信息
+     * @throws IllegalArgumentException 当服务目录为空时抛出此异常
+     */
     public AbstractClusterInvoker(Directory<T> directory, URL url) {
         if (directory == null)
             throw new IllegalArgumentException("service directory == null");
 
         this.directory = directory;
-        //sticky: invoker.isAvailable() should always be checked before using when availablecheck is true.
+        // 从URL中获取是否进行服务可用性检查的配置
+        // 当availablecheck为true时，调用服务提供者之前必须先检查其是否可用
         this.availablecheck = url.getParameter(Constants.CLUSTER_AVAILABLE_CHECK_KEY, Constants.DEFAULT_CLUSTER_AVAILABLE_CHECK);
     }
 
@@ -94,19 +145,27 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
     }
 
     /**
-     * Select a invoker using loadbalance policy.</br>
-     * a)Firstly, select an invoker using loadbalance. If this invoker is in previously selected list, or, 
-     * if this invoker is unavailable, then continue step b (reselect), otherwise return the first selected invoker</br>
-     * b)Reslection, the validation rule for reselection: selected > available. This rule guarantees that
-     * the selected invoker has the minimum chance to be one in the previously selected list, and also 
-     * guarantees this invoker is available.
+     * 使用负载均衡策略选择一个服务提供者。
+     * <p>
+     * 选择过程包含以下步骤：
+     * <ol>
+     * <li>检查粘滞连接：如果启用了粘滞连接且上一次选择的服务提供者仍然可用，则继续使用该服务提供者</li>
+     * <li>使用负载均衡策略选择：使用指定的负载均衡策略选择一个服务提供者</li>
+     * <li>重新选择：如果选中的服务提供者在已选列表中或不可用，则进行重新选择</li>
+     * </ol>
+     * <p>
+     * 重新选择的规则是：优先选择不在已选列表中且可用的服务提供者，这样可以：
+     * <ul>
+     * <li>保证所选的服务提供者尽量不在已选列表中</li>
+     * <li>保证所选的服务提供者是可用的</li>
+     * </ul>
      *
-     * @param loadbalance load balance policy
-     * @param invocation
-     * @param invokers invoker candidates
-     * @param selected  exclude selected invokers or not
-     * @return
-     * @throws RpcException
+     * @param loadbalance 负载均衡策略
+     * @param invocation 调用信息
+     * @param invokers 候选的服务提供者列表
+     * @param selected 已选的服务提供者列表（用于排除）
+     * @return 选中的服务提供者
+     * @throws RpcException 当选择过程中发生错误时抛出此异常
      */
     protected Invoker<T> select(LoadBalance loadbalance, Invocation invocation, List<Invoker<T>> invokers, List<Invoker<T>> selected) throws RpcException {
         if (invokers == null || invokers.isEmpty())
@@ -169,14 +228,27 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
     }
 
     /**
-     * Reselect, use invokers not in `selected` first, if all invokers are in `selected`, just pick an available one using loadbalance policy.
+     * 重新选择服务提供者。
+     * <p>
+     * 重新选择的策略是：
+     * <ol>
+     * <li>优先选择不在已选列表中的可用服务提供者</li>
+     * <li>如果所有服务提供者都在已选列表中，则使用负载均衡策略选择一个可用的服务提供者</li>
+     * </ol>
+     * <p>
+     * 该方法主要用于以下场景：
+     * <ul>
+     * <li>失败重试：当调用失败时，重新选择一个服务提供者进行重试</li>
+     * <li>并行调用：同时调用多个服务提供者，需要确保选择不同的服务提供者</li>
+     * </ul>
      *
-     * @param loadbalance
-     * @param invocation
-     * @param invokers
-     * @param selected
-     * @return
-     * @throws RpcException
+     * @param loadbalance 负载均衡策略
+     * @param invocation 调用信息
+     * @param invokers 候选的服务提供者列表
+     * @param selected 已选的服务提供者列表
+     * @param availablecheck 是否检查服务提供者的可用性
+     * @return 重新选择的服务提供者，如果没有可用的服务提供者则返回null
+     * @throws RpcException 当重新选择过程中发生错误时抛出此异常
      */
     private Invoker<T> reselect(LoadBalance loadbalance, Invocation invocation,
                                 List<Invoker<T>> invokers, List<Invoker<T>> selected, boolean availablecheck)
@@ -224,6 +296,22 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
         return null;
     }
 
+    /**
+     * 执行远程调用。
+     * <p>
+     * 调用过程包括以下步骤：
+     * <ol>
+     * <li>检查集群调用器是否已被销毁</li>
+     * <li>获取负载均衡策略</li>
+     * <li>将RpcContext中的附加参数绑定到调用信息中</li>
+     * <li>获取可用的服务提供者列表</li>
+     * <li>执行具体的调用策略（由子类实现）</li>
+     * </ol>
+     *
+     * @param invocation 调用信息，包含了方法名、参数等信息
+     * @return 调用结果
+     * @throws RpcException 当调用过程中发生错误时抛出此异常
+     */
     @Override
     public Result invoke(final Invocation invocation) throws RpcException {
         checkWhetherDestroyed();
@@ -244,8 +332,12 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
         return doInvoke(invocation, invokers, loadbalance);
     }
 
+    /**
+     * 检查集群调用器是否已被销毁。
+     *
+     * @throws RpcException 如果集群调用器已被销毁则抛出此异常
+     */
     protected void checkWhetherDestroyed() {
-
         if (destroyed.get()) {
             throw new RpcException("Rpc cluster invoker for " + getInterface() + " on consumer " + NetUtils.getLocalHost()
                     + " use dubbo version " + Version.getVersion()
@@ -258,6 +350,16 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
         return getInterface() + " -> " + getUrl().toString();
     }
 
+    /**
+     * 检查服务提供者列表是否为空。
+     * <p>
+     * 如果服务提供者列表为空，则说明没有可用的服务提供者，
+     * 此时会抛出异常，异常信息中包含了详细的错误原因。
+     *
+     * @param invokers 服务提供者列表
+     * @param invocation 调用信息
+     * @throws RpcException 当服务提供者列表为空时抛出此异常
+     */
     protected void checkInvokers(List<Invoker<T>> invokers, Invocation invocation) {
         if (invokers == null || invokers.isEmpty()) {
             throw new RpcException("Failed to invoke the method "
@@ -270,9 +372,37 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
         }
     }
 
+    /**
+     * 执行服务调用的模板方法。
+     * <p>
+     * 具体的调用策略由子类实现，不同的子类实现不同的调用策略：
+     * <ul>
+     * <li>FailoverClusterInvoker - 失败自动切换</li>
+     * <li>FailfastClusterInvoker - 快速失败</li>
+     * <li>FailsafeClusterInvoker - 失败安全</li>
+     * <li>FailbackClusterInvoker - 失败自动恢复</li>
+     * <li>ForkingClusterInvoker - 并行调用</li>
+     * </ul>
+     *
+     * @param invocation 调用信息
+     * @param invokers 可用的服务提供者列表
+     * @param loadbalance 负载均衡策略
+     * @return 调用结果
+     * @throws RpcException 当调用过程中发生错误时抛出此异常
+     */
     protected abstract Result doInvoke(Invocation invocation, List<Invoker<T>> invokers,
                                        LoadBalance loadbalance) throws RpcException;
 
+    /**
+     * 获取可用的服务提供者列表。
+     * <p>
+     * 该方法会从服务目录中获取符合当前调用要求的服务提供者列表。
+     * 服务目录会根据路由规则和配置规则对服务提供者列表进行过滤。
+     *
+     * @param invocation 调用信息
+     * @return 可用的服务提供者列表
+     * @throws RpcException 当获取服务提供者列表失败时抛出此异常
+     */
     protected List<Invoker<T>> list(Invocation invocation) throws RpcException {
         List<Invoker<T>> invokers = directory.list(invocation);
         return invokers;

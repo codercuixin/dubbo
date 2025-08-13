@@ -18,9 +18,29 @@ package com.alibaba.dubbo.rpc.cluster;
 
 import com.alibaba.dubbo.common.extension.SPI;
 
+/**
+ * 结果合并接口。(SPI)
+ * <p>
+ * 用于将多个相同类型的对象合并成一个对象。在集群环境下，当需要合并多个服务提供者返回的结果时使用。
+ * 常见的合并场景包括：
+ * <ul>
+ * <li>数组合并</li>
+ * <li>集合合并</li>
+ * <li>Map合并</li>
+ * <li>自定义对象合并</li>
+ * </ul>
+ *
+ * @param <T> 要合并的对象类型
+ */
 @SPI
 public interface Merger<T> {
 
+    /**
+     * 合并多个对象为一个对象。
+     * 
+     * @param items 要合并的对象数组
+     * @return 合并后的结果对象
+     */
     T merge(T... items);
 
 }

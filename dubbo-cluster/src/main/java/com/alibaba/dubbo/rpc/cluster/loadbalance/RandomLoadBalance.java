@@ -24,8 +24,8 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * random load balance.
- *
+ * 随机负载均衡实现。
+ * 按权重随机选择一个Invoker。
  */
 public class RandomLoadBalance extends AbstractLoadBalance {
 
@@ -33,6 +33,9 @@ public class RandomLoadBalance extends AbstractLoadBalance {
 
     private final Random random = new Random();
 
+    /**
+     * 按权重随机选择一个Invoker。
+     */
     @Override
     protected <T> Invoker<T> doSelect(List<Invoker<T>> invokers, URL url, Invocation invocation) {
         int length = invokers.size(); // Number of invokers

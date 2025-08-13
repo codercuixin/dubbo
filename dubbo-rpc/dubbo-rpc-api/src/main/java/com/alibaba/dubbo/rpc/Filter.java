@@ -19,21 +19,45 @@ package com.alibaba.dubbo.rpc;
 import com.alibaba.dubbo.common.extension.SPI;
 
 /**
- * Filter interface for intercepting RPC invocations. (SPI, Singleton, ThreadSafe)
+ * RPC调用拦截器接口。(SPI, Singleton, ThreadSafe)
  * 
- * Filters form an intercepting chain around the actual RPC invocation:
- * 1. They can perform custom logic before and after the actual invocation
- * 2. They can modify the invocation parameters and result
- * 3. They can handle or transform exceptions
+ * Filter在RPC调用过程中形成拦截链：
+ * 1. 调用前处理：
+ *    - 参数验证
+ *    - 请求日志
+ *    - 权限检查
+ * 2. 调用后处理：
+ *    - 结果处理
+ *    - 响应日志
+ *    - 统计信息
+ * 3. 异常处理：
+ *    - 异常转换
+ *    - 错误恢复
+ *    - 降级处理
  * 
- * Common use cases include:
- * - Authentication and authorization
- * - Logging and monitoring
- * - Request/response validation
- * - Caching
- * - Rate limiting
+ * 主要特性：
+ * - 可扩展的：支持SPI机制
+ * - 线程安全：支持并发调用
+ * - 链式处理：多个Filter串联
+ * - 双向拦截：请求和响应
  * 
- * Filters must be thread-safe as they are typically shared between requests.
+ * 常见用途：
+ * 1. 安全控制
+ *    - 身份认证
+ *    - 权限校验
+ *    - 访问控制
+ * 2. 性能优化
+ *    - 结果缓存
+ *    - 限流降级
+ *    - 超时控制
+ * 3. 日志监控
+ *    - 调用日志
+ *    - 性能统计
+ *    - 链路追踪
+ * 4. 数据处理
+ *    - 参数验证
+ *    - 结果转换
+ *    - 协议适配
  * 
  * @see com.alibaba.dubbo.rpc.Invoker
  * @see com.alibaba.dubbo.rpc.Invocation
@@ -42,30 +66,47 @@ import com.alibaba.dubbo.common.extension.SPI;
 public interface Filter {
 
     /**
-     * Intercepts the RPC invocation and provides a chance to perform custom logic.
+     * 拦截RPC调用并执行自定义逻辑。
      * 
-     * A typical filter implementation follows this pattern:
+     * 典型的Filter实现模式如下：
      * <pre>
      * public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
-     *     // Pre-processing logic (e.g. logging, validation)
+     *     // 调用前处理（如：日志记录、参数验证）
      *     try {
-     *         // Proceed with the invocation
+     *         // 执行实际的调用
      *         Result result = invoker.invoke(invocation);
-     *         // Post-processing logic for successful result
+     *         // 成功结果的后处理
      *         return result;
      *     } catch (RpcException e) {
-     *         // Exception handling logic
+     *         // 异常处理逻辑
      *         throw e;
      *     } finally {
-     *         // Cleanup logic if needed
+     *         // 必要的清理工作
      *     }
      * }
      * </pre>
+     * 
+     * 处理流程：
+     * 1. 前置处理：
+     *    - 请求参数验证
+     *    - 请求日志记录
+     *    - 权限认证检查
+     * 2. 调用执行：
+     *    - 调用下一个Filter
+     *    - 最终调用目标方法
+     * 3. 后置处理：
+     *    - 结果验证和转换
+     *    - 响应日志记录
+     *    - 统计信息更新
+     * 4. 异常处理：
+     *    - 异常捕获和转换
+     *    - 错误日志记录
+     *    - 失败统计和告警
      *
-     * @param invoker The invoker that represents the target service
-     * @param invocation The invocation that contains the method call details
-     * @return The result of the RPC invocation, possibly modified by the filter
-     * @throws RpcException If any error occurs during filter processing
+     * @param invoker 代表目标服务的Invoker对象
+     * @param invocation 包含方法调用详情的Invocation对象
+     * @return RPC调用的结果，可能被Filter修改过
+     * @throws RpcException 当Filter处理过程中发生错误时抛出
      * @see com.alibaba.dubbo.rpc.Invoker#invoke(Invocation)
      */
     Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException;

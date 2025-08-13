@@ -54,71 +54,116 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Registry directory implementation for dynamic discovery of services.
+ * 注册目录服务实现类，用于服务的动态发现。
  *
- * <p>Features:
+ * <p>主要特性：
  * <ul>
- * <li>Dynamic service discovery - automatically discovers and updates service providers from registry</li>
- * <li>Multiple protocol support - can handle multiple protocols like dubbo, http, hessian etc</li>
- * <li>Configurator support - allows dynamic configuration of providers through override rules</li>
- * <li>Router support - supports routing between different service providers</li>
+ * <li>动态服务发现 - 自动从注册中心发现和更新服务提供者</li>
+ * <li>多协议支持 - 可以处理多种协议如dubbo、http、hessian等</li>
+ * <li>配置器支持 - 通过覆盖规则允许动态配置服务提供者</li>
+ * <li>路由支持 - 支持在不同服务提供者之间进行路由</li>
  * </ul>
  *
- * <p>The directory maintains:
+ * <p>目录维护的数据结构：
  * <ul>
- * <li>urlInvokerMap: cache of URL to Invoker mapping</li>
- * <li>methodInvokerMap: cache of method name to list of Invokers mapping</li>
- * <li>cachedInvokerUrls: cache of provider URLs</li>
+ * <li>urlInvokerMap: URL到Invoker的映射缓存</li>
+ * <li>methodInvokerMap: 方法名到Invoker列表的映射缓存</li>
+ * <li>cachedInvokerUrls: 服务提供者URL的缓存</li>
  * </ul>
  *
- * <p>Key responsibilities:
+ * <p>核心职责：
  * <ul>
- * <li>Subscribe to registry events and update local caches</li>
- * <li>Convert provider URLs to Invokers</li>
- * <li>Maintain mapping between methods and Invokers</li>
- * <li>Support service routing and configuration</li>
+ * <li>订阅注册中心事件并更新本地缓存</li>
+ * <li>将服务提供者URL转换为Invoker</li>
+ * <li>维护方法与Invoker之间的映射关系</li>
+ * <li>支持服务路由和配置</li>
  * </ul>
  */
 public class RegistryDirectory<T> extends AbstractDirectory<T> implements NotifyListener {
 
+    // 日志记录器
     private static final Logger logger = LoggerFactory.getLogger(RegistryDirectory.class);
 
+    // 集群处理器，用于合并多个服务提供者
     private static final Cluster cluster = ExtensionLoader.getExtensionLoader(Cluster.class).getAdaptiveExtension();
 
+    // 路由工厂，用于创建服务路由规则
     private static final RouterFactory routerFactory = ExtensionLoader.getExtensionLoader(RouterFactory.class).getAdaptiveExtension();
 
+    // 配置工厂，用于动态配置服务
     private static final ConfiguratorFactory configuratorFactory = ExtensionLoader.getExtensionLoader(ConfiguratorFactory.class).getAdaptiveExtension();
-    private final String serviceKey; // Initialization at construction time, assertion not null
-    private final Class<T> serviceType; // Initialization at construction time, assertion not null
-    private final Map<String, String> queryMap; // Initialization at construction time, assertion not null
-    private final URL directoryUrl; // Initialization at construction time, assertion not null, and always assign non null value
+    
+    // 服务键，在构造时初始化，不允许为空
+    private final String serviceKey;
+    
+    // 服务类型，在构造时初始化，不允许为空
+    private final Class<T> serviceType;
+    
+    // 查询参数映射，在构造时初始化，不允许为空
+    private final Map<String, String> queryMap;
+    
+    // 目录URL，在构造时初始化，不允许为空，且始终赋非空值
+    private final URL directoryUrl;
+    
+    // 服务方法数组
     private final String[] serviceMethods;
+    
+    // 是否为多分组服务
     private final boolean multiGroup;
-    private Protocol protocol; // Initialization at the time of injection, the assertion is not null
-    private Registry registry; // Initialization at the time of injection, the assertion is not null
+    
+    // 协议对象，在注入时初始化，不允许为空
+    private Protocol protocol;
+    
+    // 注册中心对象，在注入时初始化，不允许为空
+    private Registry registry;
+    
+    // 服务是否被禁用
     private volatile boolean forbidden = false;
 
-    private volatile URL overrideDirectoryUrl; // Initialization at construction time, assertion not null, and always assign non null value
+    // 覆盖后的目录URL，在构造时初始化，不允许为空，且始终赋非空值
+    private volatile URL overrideDirectoryUrl;
 
+    // 已注册的消费者URL
     private volatile URL registeredConsumerUrl;
 
     /**
-     * override rules
-     * Priority: override>-D>consumer>provider
-     * Rule one: for a certain provider <ip:port,timeout=100>
-     * Rule two: for all providers <* ,timeout=5000>
+     * 覆盖规则配置器列表
+     * 优先级顺序: override > -D > consumer > provider
+     * 规则示例1: 针对特定提供者 <ip:port,timeout=100>
+     * 规则示例2: 针对所有提供者 <* ,timeout=5000>
+     * 
+     * 注意：初始值为null，运行过程中可能被设为null，使用时请使用局部变量引用
      */
-    private volatile List<Configurator> configurators; // The initial value is null and the midway may be assigned to null, please use the local variable reference
+    private volatile List<Configurator> configurators;
 
-    // Map<url, Invoker> cache service url to invoker mapping.
-    private volatile Map<String, Invoker<T>> urlInvokerMap; // The initial value is null and the midway may be assigned to null, please use the local variable reference
+    /**
+     * URL到Invoker的映射缓存
+     * 用于缓存服务URL到服务调用者的映射关系
+     * 注意：初始值为null，运行过程中可能被设为null，使用时请使用局部变量引用
+     */
+    private volatile Map<String, Invoker<T>> urlInvokerMap;
 
-    // Map<methodName, Invoker> cache service method to invokers mapping.
-    private volatile Map<String, List<Invoker<T>>> methodInvokerMap; // The initial value is null and the midway may be assigned to null, please use the local variable reference
+    /**
+     * 方法名到Invoker列表的映射缓存
+     * 用于缓存服务方法到服务调用者列表的映射关系
+     * 注意：初始值为null，运行过程中可能被设为null，使用时请使用局部变量引用
+     */
+    private volatile Map<String, List<Invoker<T>>> methodInvokerMap;
 
-    // Set<invokerUrls> cache invokeUrls to invokers mapping.
-    private volatile Set<URL> cachedInvokerUrls; // The initial value is null and the midway may be assigned to null, please use the local variable reference
+    /**
+     * Invoker URL集合缓存
+     * 用于缓存有效的服务提供者URL集合
+     * 注意：初始值为null，运行过程中可能被设为null，使用时请使用局部变量引用
+     */
+    private volatile Set<URL> cachedInvokerUrls;
 
+    /**
+     * 注册目录服务构造函数
+     * 
+     * @param serviceType 服务接口类型
+     * @param url 注册中心URL，包含服务查询和配置信息
+     * @throws IllegalArgumentException 当服务类型为空或服务键为空时抛出
+     */
     public RegistryDirectory(Class<T> serviceType, URL url) {
         super(url);
         if (serviceType == null)
@@ -136,53 +181,85 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * Convert override urls to map for use when re-refer.
-     * Send all rules every time, the urls will be reassembled and calculated
+     * 将覆盖规则URL转换为配置器列表，用于服务引用时的参数覆盖
+     * 每次都会发送所有规则，URL会被重新组装和计算
      *
-     * @param urls Contract:
-     *             </br>1.override://0.0.0.0/...( or override://ip:port...?anyhost=true)&para1=value1... means global rules (all of the providers take effect)
-     *             </br>2.override://ip:port...?anyhost=false Special rules (only for a certain provider)
-     *             </br>3.override:// rule is not supported... ,needs to be calculated by registry itself.
-     *             </br>4.override://0.0.0.0/ without parameters means clearing the override
-     * @return
+     * @param urls 覆盖规则URL列表，支持以下格式：
+     *             </br>1. override://0.0.0.0/...( 或 override://ip:port...?anyhost=true)&para1=value1... 
+     *                     表示全局规则（对所有提供者生效）
+     *             </br>2. override://ip:port...?anyhost=false 
+     *                     表示特殊规则（仅对某个特定提供者生效）
+     *             </br>3. override:// 
+     *                     不支持此规则格式，需要由注册中心自行计算
+     *             </br>4. override://0.0.0.0/ 
+     *                     不带参数表示清除覆盖规则
+     * @return 配置器列表
      */
     public static List<Configurator> toConfigurators(List<URL> urls) {
+        // 如果URL列表为空，返回空的配置器列表
         if (urls == null || urls.isEmpty()) {
             return Collections.emptyList();
         }
 
+        // 创建配置器列表，预设容量为URL列表的大小
         List<Configurator> configurators = new ArrayList<Configurator>(urls.size());
         for (URL url : urls) {
+            // 如果是空协议，清空配置器列表并结束循环
+            // 这种情况表示需要清除所有的覆盖规则
             if (Constants.EMPTY_PROTOCOL.equals(url.getProtocol())) {
                 configurators.clear();
                 break;
             }
+            // 将URL参数转换为Map，用于后续处理
             Map<String, String> override = new HashMap<String, String>(url.getParameters());
-            //The anyhost parameter of override may be added automatically, it can't change the judgement of changing url
+            // 移除anyhost参数，因为这个参数可能是自动添加的，不应影响URL的变更判断
             override.remove(Constants.ANYHOST_KEY);
+            // 如果没有覆盖参数，清空配置器列表并继续下一个URL
             if (override.size() == 0) {
                 configurators.clear();
                 continue;
             }
+            // 根据URL创建配置器并添加到列表中
             configurators.add(configuratorFactory.getConfigurator(url));
         }
+        // 对配置器列表进行排序，确保优先级顺序
         Collections.sort(configurators);
         return configurators;
     }
 
+    /**
+     * 设置服务协议
+     * 
+     * @param protocol 服务协议实现
+     */
     public void setProtocol(Protocol protocol) {
         this.protocol = protocol;
     }
 
+    /**
+     * 设置注册中心
+     * 
+     * @param registry 注册中心实现
+     */
     public void setRegistry(Registry registry) {
         this.registry = registry;
     }
 
+    /**
+     * 订阅服务提供者
+     * 设置消费者URL并向注册中心进行服务订阅
+     * 
+     * @param url 消费者URL
+     */
     public void subscribe(URL url) {
         setConsumerUrl(url);
         registry.subscribe(url, this);
     }
 
+    /**
+     * 销毁注册目录服务
+     * 包括取消注册消费者、取消订阅服务、销毁所有服务调用者等
+     */
     @Override
     public void destroy() {
         if (isDestroyed()) {
@@ -215,113 +292,128 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * Handles registry notification events for service updates.
+     * 处理注册中心的服务更新通知事件
      *
-     * <p>This method processes three types of notifications:
+     * <p>此方法处理三种类型的通知：
      * <ul>
-     * <li>Configurator URLs - for dynamic configuration updates</li>
-     * <li>Router URLs - for routing rule updates</li>
-     * <li>Provider URLs - for provider list updates</li>
+     * <li>配置器URLs - 用于动态配置更新</li>
+     * <li>路由URLs - 用于路由规则更新</li>
+     * <li>服务提供者URLs - 用于提供者列表更新</li>
      * </ul>
      *
-     * <p>The processing flow:
+     * <p>处理流程：
      * <ol>
-     * <li>Categorize URLs into configurators, routers and providers</li>
-     * <li>Update configurators if configurator URLs present</li>
-     * <li>Update routers if router URLs present</li>
-     * <li>Merge override parameters from configurators</li>
-     * <li>Refresh invokers based on provider URLs</li>
+     * <li>将URLs分类为配置器、路由器和服务提供者</li>
+     * <li>如果存在配置器URLs，则更新配置器</li>
+     * <li>如果存在路由器URLs，则更新路由器</li>
+     * <li>合并来自配置器的覆盖参数</li>
+     * <li>基于服务提供者URLs刷新调用者</li>
      * </ol>
      *
-     * <p>Special cases:
+     * <p>特殊情况处理：
      * <ul>
-     * <li>If provider list is empty with protocol = empty, forbids access</li>
-     * <li>If no notification URLs, reuse cached invoker URLs</li>
-     * <li>Invalid category URLs are logged as warnings</li>
+     * <li>如果提供者列表为空且协议为empty，则禁止访问</li>
+     * <li>如果没有通知URLs，则重用缓存的调用者URLs</li>
+     * <li>无效的分类URLs将以警告形式记录</li>
      * </ul>
      *
-     * @param urls List of URLs for configurators, routers and providers
+     * @param urls 配置器、路由器和服务提供者的URL列表
      */
     @Override
     public synchronized void notify(List<URL> urls) {
-        List<URL> invokerUrls = new ArrayList<URL>();
-        List<URL> routerUrls = new ArrayList<URL>();
-        List<URL> configuratorUrls = new ArrayList<URL>();
+        // 将URL分类为三种：服务提供者、路由规则、配置规则
+        List<URL> invokerUrls = new ArrayList<URL>();    // 服务提供者URL列表
+        List<URL> routerUrls = new ArrayList<URL>();     // 路由规则URL列表
+        List<URL> configuratorUrls = new ArrayList<URL>();// 配置规则URL列表
+
+        // 遍历URL列表，根据category和protocol进行分类
         for (URL url : urls) {
             String protocol = url.getProtocol();
             String category = url.getParameter(Constants.CATEGORY_KEY, Constants.DEFAULT_CATEGORY);
+            // 路由规则URL
             if (Constants.ROUTERS_CATEGORY.equals(category)
                     || Constants.ROUTE_PROTOCOL.equals(protocol)) {
                 routerUrls.add(url);
-            } else if (Constants.CONFIGURATORS_CATEGORY.equals(category)
+            } 
+            // 配置规则URL
+            else if (Constants.CONFIGURATORS_CATEGORY.equals(category)
                     || Constants.OVERRIDE_PROTOCOL.equals(protocol)) {
                 configuratorUrls.add(url);
-            } else if (Constants.PROVIDERS_CATEGORY.equals(category)) {
+            } 
+            // 服务提供者URL
+            else if (Constants.PROVIDERS_CATEGORY.equals(category)) {
                 invokerUrls.add(url);
             } else {
                 logger.warn("Unsupported category " + category + " in notified url: " + url + " from registry " + getUrl().getAddress() + " to consumer " + NetUtils.getLocalHost());
             }
         }
-        // configurators
+
+        // 处理配置规则：转换为Configurator列表
         if (configuratorUrls != null && !configuratorUrls.isEmpty()) {
             this.configurators = toConfigurators(configuratorUrls);
         }
-        // routers
+
+        // 处理路由规则：转换为Router列表并设置
         if (routerUrls != null && !routerUrls.isEmpty()) {
             List<Router> routers = toRouters(routerUrls);
-            if (routers != null) { // null - do nothing
+            if (routers != null) { // 如果为null则不做处理
                 setRouters(routers);
             }
         }
-        List<Configurator> localConfigurators = this.configurators; // local reference
-        // merge override parameters
+
+        // 获取配置器的本地引用，提高线程安全性
+        List<Configurator> localConfigurators = this.configurators;
+        
+        // 合并覆盖参数：将配置规则应用到目录URL
         this.overrideDirectoryUrl = directoryUrl;
         if (localConfigurators != null && !localConfigurators.isEmpty()) {
             for (Configurator configurator : localConfigurators) {
+                // 依次应用每个配置器的规则
                 this.overrideDirectoryUrl = configurator.configure(overrideDirectoryUrl);
             }
         }
-        // providers
+
+        // 刷新服务提供者：根据最新的invokerUrls刷新Invoker列表
         refreshInvoker(invokerUrls);
     }
 
     /**
-     * Refresh the invoker list from the given invoker URL list.
+     * 根据给定的调用者URL列表刷新调用者列表
      *
-     * <p>This method handles three cases:
+     * <p>此方法处理三种情况：
      * <ol>
-     * <li>Forbidden case: when URL list contains a single empty protocol URL</li>
-     * <li>No new URLs: reuse cached invoker URLs</li>
-     * <li>Normal case: convert new URLs to invokers</li>
+     * <li>禁止访问：当URL列表仅包含一个空协议URL时</li>
+     * <li>无新URLs：重用缓存的调用者URLs</li>
+     * <li>正常情况：将新URLs转换为调用者</li>
      * </ol>
      *
-     * <p>Steps for normal case:
+     * <p>正常情况的处理步骤：
      * <ol>
-     * <li>Convert URLs to new invoker map</li>
-     * <li>Convert invoker map to method invoker map</li>
-     * <li>Update state with new maps</li>
-     * <li>Destroy unused invokers</li>
+     * <li>将URLs转换为新的调用者映射</li>
+     * <li>将调用者映射转换为方法调用者映射</li>
+     * <li>使用新映射更新状态</li>
+     * <li>销毁未使用的调用者</li>
      * </ol>
      *
-     * <p>Implementation details:
+     * <p>实现细节：
      * <ul>
-     * <li>When a single empty protocol URL is received, it indicates a special case where access should be forbidden</li>
-     * <li>If no new URLs are received but cached URLs exist, the cached ones will be reused</li>
-     * <li>The methodInvokerMap maintains both method-specific invokers and a default invoker list for any method</li>
-     * <li>For multi-group scenarios, invokers from different groups are merged using the cluster join operation</li>
-     * <li>Thread safety is ensured by using local references for shared maps</li>
-     * <li>Unused invokers are destroyed to prevent memory leaks</li>
+     * <li>当收到单个空协议URL时，表示应该禁止访问的特殊情况</li>
+     * <li>如果没有收到新URLs但存在缓存的URLs，将重用缓存的URLs</li>
+     * <li>methodInvokerMap同时维护特定方法的调用者和任意方法的默认调用者列表</li>
+     * <li>对于多分组场景，使用集群连接操作合并不同组的调用者</li>
+     * <li>通过使用共享映射的本地引用确保线程安全</li>
+     * <li>销毁未使用的调用者以防止内存泄漏</li>
      * </ul>
      *
-     * <p>State management:
+     * <p>状态管理：
      * <ul>
-     * <li>forbidden: controls whether service access is allowed</li>
-     * <li>methodInvokerMap: caches method-to-invoker mappings</li>
-     * <li>urlInvokerMap: caches URL-to-invoker mappings</li>
-     * <li>cachedInvokerUrls: stores valid provider URLs</li>
+     * <li>forbidden：控制是否允许服务访问</li>
+     * <li>methodInvokerMap：缓存方法到调用者的映射</li>
+     * <li>urlInvokerMap：缓存URL到调用者的映射</li>
+     * <li>cachedInvokerUrls：存储有效的提供者URLs</li>
      * </ul>
      *
-     * @param invokerUrls List of invoker URLs
+     * @param invokerUrls 调用者URL列表
      */
     // TODO: 2017/8/31 FIXME The thread pool should be used to refresh the address, otherwise the task may be accumulated.
     private void refreshInvoker(List<URL> invokerUrls) {
@@ -440,36 +532,36 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * Convert URL list to invoker map.
+     * 将URL列表转换为调用者映射
      * 
-     * <p>The conversion process:
+     * <p>转换过程：
      * <ol>
-     * <li>Filter URLs by protocol if protocol is specified in queryMap</li>
-     * <li>Skip empty protocol URLs</li>
-     * <li>Verify protocol is supported</li>
-     * <li>Merge URL parameters according to the priority</li>
-     * <li>Create invoker from URL if not in cache</li>
+     * <li>如果queryMap中指定了协议，则按协议过滤URLs</li>
+     * <li>跳过空协议URLs</li>
+     * <li>验证协议是否被支持</li>
+     * <li>按优先级合并URL参数</li>
+     * <li>如果不在缓存中，则从URL创建调用者</li>
      * </ol>
      *
-     * <p>Implementation details:
+     * <p>实现细节：
      * <ul>
-     * <li>Protocol filtering: Only URLs matching the protocols specified in reference URL are processed</li>
-     * <li>Protocol validation: Ensures the protocol is supported by checking extension loader</li>
-     * <li>URL deduplication: Uses full URL string as key to avoid duplicate processing</li>
-     * <li>Cache mechanism: Reuses existing invokers to avoid unnecessary recreation</li>
-     * <li>Invoker state: Checks disabled/enabled state before creating new invokers</li>
+     * <li>协议过滤：仅处理与引用URL中指定协议匹配的URLs</li>
+     * <li>协议验证：通过检查扩展加载器确保协议被支持</li>
+     * <li>URL去重：使用完整URL字符串作为键以避免重复处理</li>
+     * <li>缓存机制：重用现有调用者以避免不必要的重新创建</li>
+     * <li>调用者状态：在创建新调用者前检查禁用/启用状态</li>
      * </ul>
      *
-     * <p>Key steps in invoker creation:
+     * <p>调用者创建的关键步骤：
      * <ul>
-     * <li>URL merging: Combines parameters from multiple sources</li>
-     * <li>State check: Verifies if the invoker is enabled</li>
-     * <li>Protocol reference: Creates the underlying protocol invoker</li>
-     * <li>Delegate wrapping: Wraps protocol invoker with InvokerDelegate for additional metadata</li>
+     * <li>URL合并：合并来自多个来源的参数</li>
+     * <li>状态检查：验证调用者是否启用</li>
+     * <li>协议引用：创建底层协议调用者</li>
+     * <li>委托包装：使用InvokerDelegate包装协议调用者以添加额外元数据</li>
      * </ul>
      *
-     * @param urls List of provider URLs
-     * @return Map of URL string to invoker
+     * @param urls 服务提供者URL列表
+     * @return URL字符串到调用者的映射
      */
     private Map<String, Invoker<T>> toInvokers(List<URL> urls) {
         Map<String, Invoker<T>> newUrlInvokerMap = new HashMap<String, Invoker<T>>();
@@ -604,17 +696,25 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * Route the given invokers using the specified method.
+     * 使用指定的方法对给定的调用者进行路由
      *
-     * <p>For each router:
+     * <p>对于每个路由器：
      * <ul>
-     * <li>Skip runtime routers</li>
-     * <li>Apply router rules to filter invokers</li>
+     * <li>跳过运行时路由器</li>
+     * <li>应用路由规则过滤调用者</li>
      * </ul>
      *
-     * @param invokers List of invokers to route
-     * @param method Method name to route for
-     * @return Filtered list of invokers
+     * <p>路由处理说明：
+     * <ul>
+     * <li>创建RPC调用（不含参数）用于路由规则匹配</li>
+     * <li>获取当前可用的路由器列表</li>
+     * <li>对于每个非运行时路由器，应用其路由规则</li>
+     * <li>路由结果可能减少调用者数量，但不会增加新的调用者</li>
+     * </ul>
+     *
+     * @param invokers 要进行路由的调用者列表
+     * @param method 要路由的方法名
+     * @return 经过路由筛选后的调用者列表
      */
     private List<Invoker<T>> route(List<Invoker<T>> invokers, String method) {
         Invocation invocation = new RpcInvocation(method, new Class<?>[0], new Object[0]);
@@ -631,36 +731,36 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * Convert invoker map to method invoker map.
+     * 将调用者映射转换为方法调用者映射
      * 
-     * <p>The conversion follows these rules:
+     * <p>转换遵循以下规则：
      * <ol>
-     * <li>Extract methods from invoker URL parameters</li>
-     * <li>Group invokers by method name</li>
-     * <li>Route invokers for each method</li>
-     * <li>Add default route for any method</li>
-     * <li>Sort and make unmodifiable</li>
+     * <li>从调用者URL参数中提取方法</li>
+     * <li>按方法名对调用者进行分组</li>
+     * <li>为每个方法路由调用者</li>
+     * <li>添加任意方法的默认路由</li>
+     * <li>排序并设置为不可修改</li>
      * </ol>
      *
-     * <p>Implementation details:
+     * <p>实现细节：
      * <ul>
-     * <li>Method extraction: Reads 'methods' parameter from provider URL</li>
-     * <li>Method grouping: Creates separate invoker lists for each method</li>
-     * <li>Default handling: Maintains a default invoker list for undefined methods</li>
-     * <li>Routing: Applies router rules to filter invokers for each method</li>
-     * <li>Thread safety: Returns unmodifiable collections to prevent concurrent modification</li>
+     * <li>方法提取：从提供者URL读取'methods'参数</li>
+     * <li>方法分组：为每个方法创建独立的调用者列表</li>
+     * <li>默认处理：为未定义的方法维护默认调用者列表</li>
+     * <li>路由：为每个方法应用路由规则过滤调用者</li>
+     * <li>线程安全：返回不可修改的集合以防止并发修改</li>
      * </ul>
      *
-     * <p>Special handling:
+     * <p>特殊处理：
      * <ul>
-     * <li>ANY_VALUE: Default invoker list for methods not explicitly defined</li>
-     * <li>Empty methods: Falls back to the default invoker list</li>
-     * <li>Method routing: Each method gets its own filtered invoker list</li>
-     * <li>Sorting: Invokers are sorted by URL to ensure consistent order</li>
+     * <li>ANY_VALUE：用于未明确定义方法的默认调用者列表</li>
+     * <li>空方法：回退到默认调用者列表</li>
+     * <li>方法路由：每个方法获取自己的过滤后的调用者列表</li>
+     * <li>排序：调用者按URL排序以确保一致的顺序</li>
      * </ul>
      *
-     * @param invokersMap Map of URL to invoker
-     * @return Map of method name to list of invokers
+     * @param invokersMap URL到调用者的映射
+     * @return 方法名到调用者列表的映射
      */
     private Map<String, List<Invoker<T>>> toMethodInvokers(Map<String, Invoker<T>> invokersMap) {
         // 创建新的方法级别 Invoker 映射
@@ -731,7 +831,17 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * Close all invokers
+     * 销毁所有的服务调用者
+     * 
+     * <p>销毁过程：
+     * <ul>
+     * <li>获取当前URL-调用者映射的本地引用</li>
+     * <li>遍历所有调用者并执行销毁操作</li>
+     * <li>清空URL-调用者映射</li>
+     * <li>清空方法-调用者映射</li>
+     * </ul>
+     * 
+     * <p>注意：销毁过程中的异常会被记录但不会中断流程
      */
     private void destroyAllInvokers() {
         Map<String, Invoker<T>> localUrlInvokerMap = this.urlInvokerMap; // local reference
@@ -749,13 +859,13 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * Destroy unused invokers from the old invoker map.
+     * 销毁旧调用者映射中未使用的调用者
      *
-     * <p>This prevents memory leaks when invokers are no longer needed.
-     * If refer.autodestroy=false, invokers will only increase without decreasing.
+     * <p>这可以防止不再需要的调用者造成内存泄漏。
+     * 如果refer.autodestroy=false，调用者数量只会增加而不会减少。
      *
-     * @param oldUrlInvokerMap Old invoker map
-     * @param newUrlInvokerMap New invoker map
+     * @param oldUrlInvokerMap 旧的调用者映射
+     * @param newUrlInvokerMap 新的调用者映射
      */
     private void destroyUnusedInvokers(Map<String, Invoker<T>> oldUrlInvokerMap, Map<String, Invoker<T>> newUrlInvokerMap) {
         if (newUrlInvokerMap == null || newUrlInvokerMap.size() == 0) {
@@ -795,6 +905,26 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
         }
     }
 
+    /**
+     * 获取调用者列表
+     * 
+     * <p>查找过程：
+     * <ul>
+     * <li>检查服务是否被禁用</li>
+     * <li>获取方法名和参数</li>
+     * <li>按优先级查找调用者列表：
+     *   <ol>
+     *   <li>先查找方法名+第一个参数的特定调用者</li>
+     *   <li>再查找方法名对应的调用者</li>
+     *   <li>最后查找默认调用者</li>
+     *   </ol>
+     * </li>
+     * </ul>
+     *
+     * @param invocation RPC调用信息
+     * @return 可用的调用者列表，如果没有找到则返回空列表
+     * @throws RpcException 当服务被禁用时抛出
+     */
     @Override
     public List<Invoker<T>> doList(Invocation invocation) {
         if (forbidden) {
@@ -828,24 +958,56 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
         return invokers == null ? new ArrayList<Invoker<T>>(0) : invokers;
     }
 
+    /**
+     * 获取服务接口类型
+     *
+     * @return 服务接口的Class对象
+     */
     @Override
     public Class<T> getInterface() {
         return serviceType;
     }
 
+    /**
+     * 获取覆盖后的目录URL
+     *
+     * @return 目录URL
+     */
     @Override
     public URL getUrl() {
         return this.overrideDirectoryUrl;
     }
 
+    /**
+     * 获取已注册的消费者URL
+     *
+     * @return 消费者URL
+     */
     public URL getRegisteredConsumerUrl() {
         return registeredConsumerUrl;
     }
 
+    /**
+     * 设置已注册的消费者URL
+     *
+     * @param registeredConsumerUrl 消费者URL
+     */
     public void setRegisteredConsumerUrl(URL registeredConsumerUrl) {
         this.registeredConsumerUrl = registeredConsumerUrl;
     }
 
+    /**
+     * 检查服务是否可用
+     * 
+     * <p>可用性检查：
+     * <ul>
+     * <li>检查服务是否已销毁</li>
+     * <li>检查是否存在调用者映射</li>
+     * <li>遍历所有调用者检查是否有可用的调用者</li>
+     * </ul>
+     *
+     * @return 如果有任何一个调用者可用则返回true，否则返回false
+     */
     @Override
     public boolean isAvailable() {
         if (isDestroyed()) {
@@ -863,30 +1025,59 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * Haomin: added for test purpose
+     * 获取URL到调用者的映射关系
+     * 注意：此方法主要用于测试目的
+     *
+     * @return URL到调用者的映射
      */
     public Map<String, Invoker<T>> getUrlInvokerMap() {
         return urlInvokerMap;
     }
 
     /**
-     * Haomin: added for test purpose
+     * 获取方法到调用者列表的映射关系
+     * 注意：此方法主要用于测试目的
+     *
+     * @return 方法到调用者列表的映射
      */
     public Map<String, List<Invoker<T>>> getMethodInvokerMap() {
         return methodInvokerMap;
     }
 
+    /**
+     * 调用者比较器，用于对调用者进行排序
+     * 采用单例模式实现，通过比较调用者的URL字符串进行排序
+     */
     private static class InvokerComparator implements Comparator<Invoker<?>> {
 
+        /**
+         * 比较器单例
+         */
         private static final InvokerComparator comparator = new InvokerComparator();
 
+        /**
+         * 私有构造函数，防止外部实例化
+         */
         private InvokerComparator() {
         }
 
+        /**
+         * 获取比较器实例
+         *
+         * @return 比较器单例
+         */
         public static InvokerComparator getComparator() {
             return comparator;
         }
 
+        /**
+         * 比较两个调用者
+         * 通过比较它们的URL字符串进行排序
+         *
+         * @param o1 第一个调用者
+         * @param o2 第二个调用者
+         * @return 比较结果
+         */
         @Override
         public int compare(Invoker<?> o1, Invoker<?> o2) {
             return o1.getUrl().toString().compareTo(o2.getUrl().toString());
@@ -895,9 +1086,10 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * The delegate class, which is mainly used to store the URL address sent by the registry,and can be reassembled on the basis of providerURL queryMap overrideMap for re-refer.
+     * 调用者委托类，主要用于存储注册中心发送的URL地址
+     * 可以基于providerURL、queryMap和overrideMap重新组装用于重新引用
      *
-     * @param <T>
+     * @param <T> 服务接口类型
      */
     private static class InvokerDelegate<T> extends InvokerWrapper<T> {
         private URL providerUrl;

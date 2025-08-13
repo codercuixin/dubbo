@@ -24,24 +24,24 @@ import com.alibaba.dubbo.remoting.RemotingException;
 import com.alibaba.dubbo.remoting.exchange.support.header.HeaderExchanger;
 
 /**
- * Factory interface for creating exchange clients and servers. (SPI, Singleton, ThreadSafe)
+ * 用于创建交换客户端和服务器的工厂接口。(SPI, Singleton, ThreadSafe)
  * 
- * The Exchanger is responsible for creating network communication endpoints that support
- * the request-response message exchange pattern. It provides two main functionalities:
- * 1. Creating servers that accept client connections
- * 2. Creating clients that connect to servers
+ * Exchanger负责创建支持请求-响应消息交换模式的网络通信端点。
+ * 它提供两个主要功能：
+ * 1. 创建接受客户端连接的服务器
+ * 2. 创建连接到服务器的客户端
  * 
- * Key features:
- * - SPI extensible: Different implementations can be plugged in
- * - Thread-safe: Can be safely shared across threads
- * - Singleton: One instance per implementation is sufficient
- * - Supports both synchronous and asynchronous communication
+ * 主要特性：
+ * - 可通过SPI扩展：可以插入不同的实现
+ * - 线程安全：可以在线程间安全共享
+ * - 单例：每个实现只需要一个实例
+ * - 支持同步和异步通信
  * 
- * The default implementation is HeaderExchanger, which adds a message header
- * for request-response correlation.
+ * 默认实现是HeaderExchanger，它为请求-响应关联
+ * 添加了消息头。
  * 
- * @see <a href="http://en.wikipedia.org/wiki/Message_Exchange_Pattern">Message Exchange Pattern</a>
- * @see <a href="http://en.wikipedia.org/wiki/Request-response">Request-Response Pattern</a>
+ * @see <a href="http://en.wikipedia.org/wiki/Message_Exchange_Pattern">消息交换模式</a>
+ * @see <a href="http://en.wikipedia.org/wiki/Request-response">请求-响应模式</a>
  * @see ExchangeClient
  * @see ExchangeServer
  * @see HeaderExchanger
@@ -50,40 +50,40 @@ import com.alibaba.dubbo.remoting.exchange.support.header.HeaderExchanger;
 public interface Exchanger {
 
     /**
-     * Creates and binds an exchange server to the specified URL.
+     * 创建并绑定交换服务器到指定的URL。
      * 
-     * This method:
-     * 1. Creates a new exchange server instance
-     * 2. Binds it to the port specified in the URL
-     * 3. Configures it with the provided handler
-     * 4. Starts accepting client connections
+     * 此方法：
+     * 1. 创建一个新的交换服务器实例
+     * 2. 将其绑定到URL指定的端口
+     * 3. 使用提供的处理器配置它
+     * 4. 开始接受客户端连接
      * 
-     * The server configuration is specified through the URL parameters.
+     * 服务器配置通过URL参数指定。
      *
-     * @param url The URL containing server configuration parameters
-     * @param handler The handler that will process incoming requests
-     * @return A new ExchangeServer instance that is ready to accept connections
-     * @throws RemotingException If the server cannot be created or bound
+     * @param url 包含服务器配置参数的URL
+     * @param handler 将处理传入请求的处理器
+     * @return 一个准备好接受连接的新ExchangeServer实例
+     * @throws RemotingException 如果服务器无法创建或绑定
      */
     @Adaptive({Constants.EXCHANGER_KEY})
     ExchangeServer bind(URL url, ExchangeHandler handler) throws RemotingException;
 
     /**
-     * Creates and connects an exchange client to a remote server.
+     * 创建并连接交换客户端到远程服务器。
      * 
-     * This method:
-     * 1. Creates a new exchange client instance
-     * 2. Connects it to the server specified in the URL
-     * 3. Configures it with the provided handler
-     * 4. Establishes the connection and returns when ready
+     * 此方法：
+     * 1. 创建一个新的交换客户端实例
+     * 2. 将其连接到URL指定的服务器
+     * 3. 使用提供的处理器配置它
+     * 4. 建立连接并在就绪时返回
      * 
-     * The client configuration is specified through the URL parameters.
-     * The connection attempt will timeout based on URL parameters.
+     * 客户端配置通过URL参数指定。
+     * 连接尝试将根据URL参数设置的超时时间超时。
      *
-     * @param url The URL containing server address and client configuration
-     * @param handler The handler that will process server responses
-     * @return A new ExchangeClient instance that is connected and ready
-     * @throws RemotingException If the client cannot connect to the server
+     * @param url 包含服务器地址和客户端配置的URL
+     * @param handler 将处理服务器响应的处理器
+     * @return 一个已连接且就绪的新ExchangeClient实例
+     * @throws RemotingException 如果客户端无法连接到服务器
      */
     @Adaptive({Constants.EXCHANGER_KEY})
     ExchangeClient connect(URL url, ExchangeHandler handler) throws RemotingException;

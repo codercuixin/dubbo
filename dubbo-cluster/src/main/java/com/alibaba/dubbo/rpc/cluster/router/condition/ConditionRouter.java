@@ -40,15 +40,54 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * ConditionRouter
+ * 基于条件表达式的路由器
+ * 
+ * 该路由器基于条件表达式进行服务路由，规则如下：
+ * 1. 格式为：[whenCondition =>] thenCondition
+ * 2. whenCondition和thenCondition都是可选的
+ * 3. 条件表达式格式：key1=value1,value2 & key2!=value3 & key3
+ * 4. 条件值可以使用逗号分隔，表示"或"的关系
+ * 5. 支持匹配和不匹配两种规则（= 和 !=）
+ * 
+ * 示例：
+ * host = 10.20.153.10,10.20.153.11 => host = 10.20.153.10
+ * 表示：当消费者的host是10.20.153.10或10.20.153.11时，只调用10.20.153.10上的提供者
  */
 public class ConditionRouter extends AbstractRouter {
 
+    /**
+     * 日志记录器
+     */
     private static final Logger logger = LoggerFactory.getLogger(ConditionRouter.class);
+
+    /**
+     * 路由规则的默认优先级
+     */
     private static final int DEFAULT_PRIORITY = 2;
+
+    /**
+     * 路由规则的解析正则表达式
+     * 用于解析条件表达式中的操作符和值
+     */
     private static Pattern ROUTE_PATTERN = Pattern.compile("([&!=,]*)\\s*([^&!=,\\s]+)");
+
+    /**
+     * 当路由结果为空时，是否强制执行
+     * true: 直接返回空结果
+     * false: 返回所有服务提供者
+     */
     private final boolean force;
+
+    /**
+     * 条件路由规则的前置条件
+     * 当前置条件满足时，才会进行路由规则的匹配
+     */
     private final Map<String, MatchPair> whenCondition;
+
+    /**
+     * 条件路由规则的后置条件
+     * 当前置条件满足时，使用后置条件进行服务提供者的过滤
+     */
     private final Map<String, MatchPair> thenCondition;
 
     public ConditionRouter(URL url) {
@@ -74,6 +113,13 @@ public class ConditionRouter extends AbstractRouter {
         }
     }
 
+    /**
+     * 解析路由规则字符串
+     * 
+     * @param rule 路由规则字符串，格式为：key1=value1,value2 & key2!=value3 & key3
+     * @return 解析后的条件映射表
+     * @throws ParseException 当规则格式不正确时抛出异常
+     */
     private static Map<String, MatchPair> parseRule(String rule)
             throws ParseException {
         Map<String, MatchPair> condition = new HashMap<String, MatchPair>();
@@ -141,6 +187,20 @@ public class ConditionRouter extends AbstractRouter {
         return condition;
     }
 
+    /**
+     * 根据路由规则进行服务路由
+     * 
+     * 路由过程：
+     * 1. 检查前置条件(whenCondition)是否满足
+     * 2. 如果满足，使用后置条件(thenCondition)对服务提供者列表进行过滤
+     * 3. 如果过滤后结果为空且force=false，返回原始列表
+     * 
+     * @param invokers 原始的服务提供者列表
+     * @param url 消费者的URL
+     * @param invocation 调用信息
+     * @return 经过路由筛选后的服务提供者列表
+     * @throws RpcException 路由过程出现异常
+     */
     @Override
     public <T> List<Invoker<T>> route(List<Invoker<T>> invokers, URL url, Invocation invocation)
             throws RpcException {
@@ -187,14 +247,37 @@ public class ConditionRouter extends AbstractRouter {
         return this.priority == c.priority ? url.toFullString().compareTo(c.url.toFullString()) : (this.priority > c.priority ? 1 : -1);
     }
 
+    /**
+     * 检查前置条件是否匹配
+     * 
+     * @param url 待检查的URL
+     * @param invocation 调用信息
+     * @return 如果前置条件为空或匹配成功返回true，否则返回false
+     */
     boolean matchWhen(URL url, Invocation invocation) {
         return whenCondition == null || whenCondition.isEmpty() || matchCondition(whenCondition, url, null, invocation);
     }
 
+    /**
+     * 检查后置条件是否匹配
+     * 
+     * @param url 待检查的URL
+     * @param param 参数URL
+     * @return 如果后置条件匹配成功返回true，否则返回false
+     */
     private boolean matchThen(URL url, URL param) {
         return !(thenCondition == null || thenCondition.isEmpty()) && matchCondition(thenCondition, url, param, null);
     }
 
+    /**
+     * 检查URL是否与指定的条件匹配
+     * 
+     * @param condition 条件集合
+     * @param url 待检查的URL
+     * @param param 参数URL
+     * @param invocation 调用信息
+     * @return 如果URL满足所有条件返回true，否则返回false
+     */
     private boolean matchCondition(Map<String, MatchPair> condition, URL url, URL param, Invocation invocation) {
         Map<String, String> sample = url.toMap();
         boolean result = false;
@@ -228,12 +311,47 @@ public class ConditionRouter extends AbstractRouter {
         return result;
     }
 
+    /**
+     * 条件匹配对，用于存储路由规则中的匹配条件
+     * 包含需要匹配的目标值集合和需要排除的值集合
+     */
     private static final class MatchPair {
+        /**
+         * 匹配目标集合
+         * 保存路由规则中 = 操作符后的值
+         * 例如：host = 1.2.3.4,5.6.7.8 中的 1.2.3.4,5.6.7.8 会被加入此集合
+         * 当值匹配此集合中任意一个规则时，表示规则匹配成功
+         */
         final Set<String> matches = new HashSet<String>();
+
+        /**
+         * 排除规则集合
+         * 保存路由规则中 != 操作符后的值
+         * 例如：host != 1.2.3.4 中的 1.2.3.4 会被加入此集合
+         * 当值匹配此集合中任意一个规则时，表示规则匹配失败
+         */
         final Set<String> mismatches = new HashSet<String>();
 
+        /**
+         * 检查给定的值是否满足路由规则
+         * 
+         * 匹配逻辑：
+         * 1. 如果只有匹配目标集合(matches)有值：
+         *    - 值必须至少匹配其中一个规则才返回true
+         * 2. 如果只有排除规则集合(mismatches)有值：
+         *    - 值不能匹配任何一个排除规则才返回true
+         * 3. 如果两个集合都有值：
+         *    - 优先检查排除规则，如果匹配任何一个排除规则则返回false
+         *    - 然后检查匹配规则，必须至少匹配一个规则才返回true
+         * 
+         * @param value 待检查的值，如主机地址、方法名等
+         * @param param 参数URL，用于支持条件路由中的参数化配置
+         * @return 如果值满足路由规则返回true，否则返回false
+         */
         private boolean isMatch(String value, URL param) {
+            // 场景1: 只有匹配规则，没有排除规则
             if (!matches.isEmpty() && mismatches.isEmpty()) {
+                // 必须至少匹配一个目标值才能通过
                 for (String match : matches) {
                     if (UrlUtils.isMatchGlobPattern(match, value, param)) {
                         return true;
@@ -242,7 +360,9 @@ public class ConditionRouter extends AbstractRouter {
                 return false;
             }
 
+            // 场景2: 只有排除规则，没有匹配规则
             if (!mismatches.isEmpty() && matches.isEmpty()) {
+                // 不能匹配任何一个排除规则
                 for (String mismatch : mismatches) {
                     if (UrlUtils.isMatchGlobPattern(mismatch, value, param)) {
                         return false;
@@ -251,13 +371,15 @@ public class ConditionRouter extends AbstractRouter {
                 return true;
             }
 
+            // 场景3: 同时存在匹配规则和排除规则
             if (!matches.isEmpty() && !mismatches.isEmpty()) {
-                //when both mismatches and matches contain the same value, then using mismatches first
+                // 优先检查排除规则，任何一个匹配就返回false
                 for (String mismatch : mismatches) {
                     if (UrlUtils.isMatchGlobPattern(mismatch, value, param)) {
                         return false;
                     }
                 }
+                // 再检查匹配规则，必须至少匹配一个
                 for (String match : matches) {
                     if (UrlUtils.isMatchGlobPattern(match, value, param)) {
                         return true;

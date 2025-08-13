@@ -20,16 +20,16 @@ import com.alibaba.dubbo.remoting.Channel;
 import com.alibaba.dubbo.remoting.RemotingException;
 
 /**
- * Extended channel interface that supports request-response style communication. (API/SPI, Prototype, ThreadSafe)
+ * 支持请求-响应式通信的扩展通道接口。(API/SPI, Prototype, ThreadSafe)
  * 
- * This interface extends the basic Channel interface to provide:
- * 1. Request-response pattern support through request() methods
- * 2. Asynchronous response handling via ResponseFuture
- * 3. Exchange message handling capabilities
- * 4. Graceful shutdown support
+ * 该接口扩展了基本的Channel接口，提供以下功能：
+ * 1. 通过request()方法支持请求-响应模式
+ * 2. 通过ResponseFuture支持异步响应处理
+ * 3. 提供交换消息处理能力
+ * 4. 支持优雅关闭
  * 
- * ExchangeChannel is the foundation for RPC communication in Dubbo, enabling
- * both synchronous and asynchronous request-response patterns over a network connection.
+ * ExchangeChannel是Dubbo中RPC通信的基础，
+ * 支持在网络连接上进行同步和异步的请求-响应模式通信。
  * 
  * @see com.alibaba.dubbo.remoting.Channel
  * @see ResponseFuture
@@ -38,58 +38,57 @@ import com.alibaba.dubbo.remoting.RemotingException;
 public interface ExchangeChannel extends Channel {
 
     /**
-     * Sends a request message and returns a future for the response.
+     * 发送请求消息并返回用于获取响应的Future对象。
      * 
-     * This method implements the asynchronous request-response pattern:
-     * 1. Sends the request message to the remote endpoint
-     * 2. Returns immediately with a ResponseFuture
-     * 3. The response can be retrieved later through the ResponseFuture
+     * 此方法实现了异步的请求-响应模式：
+     * 1. 向远程端点发送请求消息
+     * 2. 立即返回一个ResponseFuture对象
+     * 3. 响应可以稍后通过ResponseFuture获取
      * 
-     * Uses the default timeout value configured for the channel.
+     * 使用通道配置的默认超时值。
      *
-     * @param request The request message to send
-     * @return A ResponseFuture that will contain the response when it arrives
-     * @throws RemotingException If the request cannot be sent
+     * @param request 要发送的请求消息
+     * @return 一个ResponseFuture对象，当响应到达时可从中获取响应
+     * @throws RemotingException 如果请求无法发送
      */
     ResponseFuture request(Object request) throws RemotingException;
 
     /**
-     * Sends a request message with a specified timeout and returns a future for the response.
+     * 发送请求消息并指定超时时间，返回用于获取响应的Future对象。
      * 
-     * Similar to request(Object), but allows specifying a custom timeout:
-     * 1. Sends the request message to the remote endpoint
-     * 2. Returns immediately with a ResponseFuture
-     * 3. The response must arrive within the specified timeout
-     * 4. If timeout occurs, the future will complete exceptionally
+     * 类似于request(Object)，但允许指定自定义超时：
+     * 1. 向远程端点发送请求消息
+     * 2. 立即返回一个ResponseFuture对象
+     * 3. 响应必须在指定的超时时间内到达
+     * 4. 如果发生超时，Future将以异常完成
      *
-     * @param request The request message to send
-     * @param timeout Maximum time to wait for response in milliseconds
-     * @return A ResponseFuture that will contain the response when it arrives
-     * @throws RemotingException If the request cannot be sent
+     * @param request 要发送的请求消息
+     * @param timeout 等待响应的最大时间（毫秒）
+     * @return 一个ResponseFuture对象，当响应到达时可从中获取响应
+     * @throws RemotingException 如果请求无法发送
      */
     ResponseFuture request(Object request, int timeout) throws RemotingException;
 
     /**
-     * Gets the exchange handler associated with this channel.
+     * 获取与此通道关联的交换处理器。
      * 
-     * The exchange handler is responsible for processing incoming requests
-     * and responses on this channel. It contains the business logic for
-     * handling different types of messages.
+     * 交换处理器负责处理此通道上的传入请求
+     * 和响应。它包含了处理不同类型消息的业务逻辑。
      *
-     * @return The ExchangeHandler that processes messages for this channel
+     * @return 处理此通道消息的ExchangeHandler
      */
     ExchangeHandler getExchangeHandler();
 
     /**
-     * Closes the channel gracefully with a specified timeout.
+     * 使用指定的超时时间优雅地关闭通道。
      * 
-     * A graceful close ensures that:
-     * 1. No new requests are accepted
-     * 2. Pending requests are allowed to complete
-     * 3. Resources are properly released
-     * 4. The underlying connection is closed after cleanup
+     * 优雅关闭确保：
+     * 1. 不再接受新的请求
+     * 2. 允许待处理的请求完成
+     * 3. 正确释放资源
+     * 4. 清理完成后关闭底层连接
      *
-     * @param timeout Maximum time in milliseconds to wait for pending requests
+     * @param timeout 等待待处理请求的最大时间（毫秒）
      */
     @Override
     void close(int timeout);

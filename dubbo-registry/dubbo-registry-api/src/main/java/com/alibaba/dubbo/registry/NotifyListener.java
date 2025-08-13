@@ -21,23 +21,73 @@ import com.alibaba.dubbo.common.URL;
 import java.util.List;
 
 /**
- * NotifyListener. (API, Prototype, ThreadSafe)
- *
+ * 注册数据变更通知监听器。(API, Prototype, ThreadSafe)
+ * 
+ * 该接口用于处理注册中心的数据变更通知：
+ * 1. 服务变更通知
+ *    - 提供者列表变更
+ *    - 消费者列表变更
+ *    - 路由规则变更
+ * 2. 配置变更通知
+ *    - 动态配置变更
+ *    - 服务降级配置
+ *    - 权重调整配置
+ * 
+ * 主要特性：
+ * - 线程安全：支持并发通知
+ * - 有序处理：保证通知顺序
+ * - 分类通知：支持分类数据
+ * - 全量通知：不支持增量通知
+ * 
+ * 使用场景：
+ * 1. 服务发现
+ * 2. 配置变更
+ * 3. 服务治理
+ * 4. 动态路由
+ * 
  * @see com.alibaba.dubbo.registry.RegistryService#subscribe(URL, NotifyListener)
  */
 public interface NotifyListener {
 
     /**
-     * Triggered when a service change notification is received.
-     * <p>
-     * Notify needs to support the contract: <br>
-     * 1. Always notifications on the service interface and the dimension of the data type. that is, won't notify part of the same type data belonging to one service. Users do not need to compare the results of the previous notification.<br>
-     * 2. The first notification at a subscription must be a full notification of all types of data of a service.<br>
-     * 3. At the time of change, different types of data are allowed to be notified separately, e.g.: providers, consumers, routers, overrides. It allows only one of these types to be notified, but the data of this type must be full, not incremental.<br>
-     * 4. If a data type is empty, need to notify a empty protocol with category parameter identification of url data.<br>
-     * 5. The order of notifications to be guaranteed by the notifications(That is, the implementation of the registry). Such as: single thread push, queue serialization, and version comparison.<br>
+     * 当接收到服务变更通知时触发。
+     * 
+     * 通知需要遵循以下约定：
+     * 1. 通知粒度：
+     *    - 按服务接口和数据类型维度通知
+     *    - 同一服务的同类数据必须全量通知
+     *    - 不需要比较前次通知结果
+     * 
+     * 2. 首次通知：
+     *    - 必须是服务的全量数据
+     *    - 包含所有数据类型
+     *    - 即使数据为空也要通知
+     * 
+     * 3. 变更通知：
+     *    - 允许分类型通知：providers、consumers等
+     *    - 每种类型数据必须是全量的
+     *    - 不支持增量数据通知
+     * 
+     * 4. 空数据处理：
+     *    - 需要通知空协议
+     *    - 使用category参数标识数据类型
+     *    - URL中包含空协议标识
+     * 
+     * 5. 通知顺序：
+     *    - 注册中心实现必须保证顺序
+     *    - 支持的方式：
+     *      - 单线程推送
+     *      - 队列序列化
+     *      - 版本号比对
+     * 
+     * 通知分类：
+     * 1. 服务提供者：providers
+     * 2. 服务消费者：consumers
+     * 3. 路由规则：routers
+     * 4. 配置信息：overrides
      *
-     * @param urls The list of registered information , is always not empty. The meaning is the same as the return value of {@link com.alibaba.dubbo.registry.RegistryService#lookup(URL)}.
+     * @param urls 已注册的信息列表，永远不会为空，
+     *            数据格式与{@link RegistryService#lookup(URL)}的返回值相同
      */
     void notify(List<URL> urls);
 

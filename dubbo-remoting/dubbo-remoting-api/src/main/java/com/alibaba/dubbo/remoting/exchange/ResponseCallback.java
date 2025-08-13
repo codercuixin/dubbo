@@ -17,59 +17,59 @@
 package com.alibaba.dubbo.remoting.exchange;
 
 /**
- * Callback interface for asynchronous response handling. (API, Prototype, ThreadSafe)
+ * 异步响应处理的回调接口。(API, Prototype, ThreadSafe)
  * 
- * This interface defines the contract for handling asynchronous responses:
- * 1. Successful responses through done()
- * 2. Error conditions through caught()
+ * 该接口定义了处理异步响应的契约：
+ * 1. 通过 done() 处理成功的响应
+ * 2. 通过 caught() 处理错误情况
  * 
- * The callback methods are invoked when:
- * - The response is received from the remote endpoint
- * - An error occurs during request processing
- * - The request times out
+ * 回调方法在以下情况下被调用：
+ * - 从远程端点接收到响应时
+ * - 请求处理过程中发生错误时
+ * - 请求超时时
  * 
- * Implementation considerations:
- * - Methods should return quickly to avoid blocking
- * - Implementations should be thread-safe
- * - Exceptions in callback methods are logged but not propagated
+ * 实现注意事项：
+ * - 方法应快速返回以避免阻塞
+ * - 实现应该是线程安全的
+ * - 回调方法中的异常会被记录日志但不会传播
  * 
  * @see ResponseFuture#setCallback(ResponseCallback)
  */
 public interface ResponseCallback {
 
     /**
-     * Called when a response is successfully received.
+     * 当成功接收到响应时调用。
      * 
-     * This method is invoked when:
-     * 1. The response arrives normally
-     * 2. The response can be successfully deserialized
-     * 3. No timeout or other errors occurred
+     * 此方法在以下情况下被调用：
+     * 1. 响应正常到达
+     * 2. 响应可以被成功反序列化
+     * 3. 没有发生超时或其他错误
      * 
-     * The implementation should:
-     * 1. Process the response quickly
-     * 2. Not throw exceptions
-     * 3. Handle null responses appropriately
+     * 实现应该：
+     * 1. 快速处理响应
+     * 2. 不抛出异常
+     * 3. 适当处理空响应
      *
-     * @param response The response object from the remote call
+     * @param response 来自远程调用的响应对象
      */
     void done(Object response);
 
     /**
-     * Called when an error occurs during response processing.
+     * 当响应处理过程中发生错误时调用。
      * 
-     * This method is invoked when:
-     * 1. Network errors occur
-     * 2. Timeout occurs
-     * 3. Response deserialization fails
-     * 4. Other processing errors occur
+     * 此方法在以下情况下被调用：
+     * 1. 发生网络错误
+     * 2. 发生超时
+     * 3. 响应反序列化失败
+     * 4. 发生其他处理错误
      * 
-     * The implementation should:
-     * 1. Handle the error appropriately
-     * 2. Not throw exceptions
-     * 3. Log errors if necessary
-     * 4. Clean up any resources
+     * 实现应该：
+     * 1. 适当处理错误
+     * 2. 不抛出异常
+     * 3. 必要时记录错误日志
+     * 4. 清理所有资源
      *
-     * @param exception The error that occurred during processing
+     * @param exception 处理过程中发生的错误
      */
     void caught(Throwable exception);
 

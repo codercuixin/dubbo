@@ -26,11 +26,37 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * URL statistics. (API, Cached, ThreadSafe)
+ * RpcStatus 用于统计和管理每个服务或方法的调用状态信息。
+ * <p>
+ * 主要用于记录并发调用数、总调用数、失败数、耗时等信息，
+ * 支持服务级和方法级的统计，线程安全。
+ * 典型应用场景包括限流、负载均衡、服务治理等。
  *
- * @see com.alibaba.dubbo.rpc.filter.ActiveLimitFilter
- * @see com.alibaba.dubbo.rpc.filter.ExecuteLimitFilter
- * @see com.alibaba.dubbo.rpc.cluster.loadbalance.LeastActiveLoadBalance
+ * 主要字段说明：
+ * <ul>
+ *   <li>SERVICE_STATISTICS：服务级别的统计信息缓存</li>
+ *   <li>METHOD_STATISTICS：方法级别的统计信息缓存</li>
+ *   <li>active：当前活跃调用数</li>
+ *   <li>total：总调用次数</li>
+ *   <li>failed：失败调用次数</li>
+ *   <li>totalElapsed：总耗时</li>
+ *   <li>failedElapsed：失败调用总耗时</li>
+ *   <li>maxElapsed：最大耗时</li>
+ *   <li>failedMaxElapsed：失败最大耗时</li>
+ *   <li>succeededMaxElapsed：成功最大耗时</li>
+ *   <li>executesLimit：并发执行信号量（限流）</li>
+ * </ul>
+ *
+ * 典型用法：
+ * <pre>
+ *   RpcStatus.beginCount(url, methodName);
+ *   try {
+ *     // 调用业务逻辑
+ *     RpcStatus.endCount(url, methodName, elapsed, true);
+ *   } catch (Exception e) {
+ *     RpcStatus.endCount(url, methodName, elapsed, false);
+ *   }
+ * </pre>
  */
 public class RpcStatus {
 

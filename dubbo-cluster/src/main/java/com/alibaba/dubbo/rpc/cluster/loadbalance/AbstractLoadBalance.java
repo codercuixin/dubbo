@@ -25,16 +25,27 @@ import com.alibaba.dubbo.rpc.cluster.LoadBalance;
 import java.util.List;
 
 /**
- * AbstractLoadBalance
- *
+ * 负载均衡抽象基类，定义了通用的选择逻辑和权重计算逻辑。
+ * 子类只需实现 doSelect 方法即可实现不同的负载均衡策略。
  */
 public abstract class AbstractLoadBalance implements LoadBalance {
 
+    /**
+     * 计算服务预热期间的权重，防止刚启动的服务因权重过高被大量请求压垮。
+     *
+     * @param uptime 服务已启动时间（毫秒）
+     * @param warmup 预热时长（毫秒）
+     * @param weight 配置权重
+     * @return 预热修正后的权重
+     */
     static int calculateWarmupWeight(int uptime, int warmup, int weight) {
         int ww = (int) ((float) uptime / ((float) warmup / (float) weight));
         return ww < 1 ? 1 : (ww > weight ? weight : ww);
     }
 
+    /**
+     * 选择一个Invoker进行调用。若只有一个Invoker则直接返回，否则交由doSelect实现。
+     */
     @Override
     public <T> Invoker<T> select(List<Invoker<T>> invokers, URL url, Invocation invocation) {
         if (invokers == null || invokers.isEmpty())
@@ -44,8 +55,17 @@ public abstract class AbstractLoadBalance implements LoadBalance {
         return doSelect(invokers, url, invocation);
     }
 
+    /**
+     * 子类需实现的选择逻辑。
+     */
     protected abstract <T> Invoker<T> doSelect(List<Invoker<T>> invokers, URL url, Invocation invocation);
 
+    /**
+     * 获取Invoker的权重，支持预热权重调整。
+     * @param invoker 调用者
+     * @param invocation 调用信息
+     * @return 权重值
+     */
     protected int getWeight(Invoker<?> invoker, Invocation invocation) {
         int weight = invoker.getUrl().getMethodParameter(invocation.getMethodName(), Constants.WEIGHT_KEY, Constants.DEFAULT_WEIGHT);
         if (weight > 0) {

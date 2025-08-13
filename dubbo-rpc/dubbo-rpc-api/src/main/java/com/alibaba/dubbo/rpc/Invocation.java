@@ -19,135 +19,237 @@ package com.alibaba.dubbo.rpc;
 import java.util.Map;
 
 /**
- * Invocation represents an RPC call, including method name, parameters and attachments. (API, Prototype, NonThreadSafe)
+ * RPC调用信息封装接口。(API, Prototype, NonThreadSafe)
  * 
- * This interface defines the contract for an RPC invocation, containing all the necessary information
- * to perform a remote method call:
- * 1. Method name and parameter types for method identification
- * 2. Arguments for method invocation
- * 3. Attachments for metadata transfer
- * 4. Context information like the invoker reference
+ * 该接口封装了一次RPC调用所需的所有信息：
+ * 1. 方法标识：
+ *    - 方法名
+ *    - 参数类型列表
+ * 2. 调用参数：
+ *    - 实际参数值
+ *    - 参数类型检查
+ * 3. 元数据传输：
+ *    - 附加信息（attachments）
+ *    - 上下文数据
+ * 4. 调用上下文：
+ *    - Invoker引用
+ *    - 本地属性
  * 
- * Note: Implementations of this interface are not required to be thread-safe as each invocation
- * typically represents a single RPC call.
- *
- * @serial Don't change the class name and package name.
+ * 主要特性：
+ * - 非线程安全：每个实例代表单次调用
+ * - 可序列化：支持网络传输
+ * - 轻量级：避免存储过多状态
+ * - 支持泛化调用
+ * 
+ * 使用场景：
+ * 1. 服务方法调用
+ * 2. 泛化调用支持
+ * 3. 调用拦截和过滤
+ * 4. 调用上下文传递
+ * 
+ * @serial 不要修改类名和包名
  * @see com.alibaba.dubbo.rpc.Invoker#invoke(Invocation)
  * @see com.alibaba.dubbo.rpc.RpcInvocation
  */
 public interface Invocation {
 
     /**
-     * Gets the name of the method being invoked.
+     * 获取被调用的方法名。
      * 
-     * This is the actual method name from the service interface that is being called.
-     * For example, if calling "UserService.findById", this would return "findById".
+     * 返回服务接口中实际被调用的方法名：
+     * - 例如调用"UserService.findById"时，返回"findById"
+     * - 例如调用"OrderService.create"时，返回"create"
+     * 
+     * 使用场景：
+     * 1. 方法调用分发
+     * 2. 方法级别的拦截
+     * 3. 方法调用统计
      *
-     * @return The method name being invoked
-     * @serial The method name must be serializable for RPC transmission
+     * @return 被调用的方法名
+     * @serial 方法名必须可序列化以支持RPC传输
      */
     String getMethodName();
 
     /**
-     * Gets the parameter types of the method being invoked.
+     * 获取方法的参数类型列表。
      * 
-     * This array contains the Class objects representing each parameter's type
-     * in the order they appear in the method signature. This is essential for
-     * method overloading resolution.
+     * 返回一个Class数组，按方法签名中参数的顺序包含每个参数的类型：
+     * - 用于方法重载解析
+     * - 支持参数类型检查
+     * - 辅助参数序列化
+     * 
+     * 使用场景：
+     * 1. 方法重载匹配
+     * 2. 参数类型验证
+     * 3. 泛化调用支持
+     * 4. 参数序列化
      *
-     * @return An array of Class objects representing the parameter types
-     * @serial Parameter types must be serializable for RPC transmission
+     * @return 参数类型的Class对象数组
+     * @serial 参数类型必须可序列化以支持RPC传输
      */
     Class<?>[] getParameterTypes();
 
     /**
-     * Gets the actual argument values for the method invocation.
+     * 获取方法调用的实际参数值。
      * 
-     * This array contains the actual parameter values to be passed to the method
-     * in the order they appear in the method signature. The arguments must match
-     * the parameter types returned by getParameterTypes().
+     * 返回一个对象数组，包含按方法签名顺序排列的实际参数值：
+     * - 参数值必须与getParameterTypes()返回的类型匹配
+     * - 支持基本类型和复杂对象
+     * - 需要确保参数可序列化
+     * 
+     * 使用场景：
+     * 1. 方法调用执行
+     * 2. 参数值验证
+     * 3. 参数日志记录
+     * 4. 参数值转换
      *
-     * @return An array of Objects containing the actual argument values
-     * @serial Arguments must be serializable for RPC transmission
+     * @return 包含实际参数值的对象数组
+     * @serial 参数值必须可序列化以支持RPC传输
      */
     Object[] getArguments();
 
     /**
-     * Gets all attachments carried with this invocation.
+     * 获取调用携带的所有附加信息。
      * 
-     * Attachments are used to carry additional metadata for the invocation,
-     * such as tracing context, authentication tokens, or any other metadata
-     * that needs to be transferred between consumer and provider.
+     * 附加信息用于传输调用的元数据：
+     * - 链路追踪上下文
+     * - 认证令牌
+     * - 超时配置
+     * - 版本信息
+     * - 分组信息
+     * - 其他需要在消费者和提供者间传递的元数据
+     * 
+     * 使用场景：
+     * 1. 分布式追踪
+     * 2. 服务鉴权
+     * 3. 流量控制
+     * 4. 服务治理
      *
-     * @return A Map containing all attachments with string keys and values
-     * @serial Attachments must be serializable for RPC transmission
+     * @return 包含所有附加信息的Map，键和值都是字符串
+     * @serial 附加信息必须可序列化以支持RPC传输
      */
     Map<String, String> getAttachments();
 
     /**
-     * Gets a specific attachment value by its key.
+     * 根据键获取特定的附加信息值。
      * 
-     * This is a convenience method to get a single attachment value
-     * without having to handle the map directly.
+     * 这是一个便捷方法，无需直接操作Map即可获取单个附加值：
+     * - 如果键不存在返回null
+     * - 常用于获取特定的元数据
+     * - 支持常见的配置项
+     * 
+     * 常用的附加信息键：
+     * - interface：服务接口名
+     * - version：服务版本
+     * - group：服务分组
+     * - timeout：调用超时时间
+     * - token：认证令牌
      *
-     * @param key The key of the attachment to retrieve
-     * @return The attachment value associated with the key, or null if not found
-     * @serial The attachment value must be serializable for RPC transmission
+     * @param key 要获取的附加信息的键
+     * @return 与键关联的附加信息值，如果未找到则返回null
+     * @serial 附加信息值必须可序列化以支持RPC传输
      */
     String getAttachment(String key);
 
     /**
-     * Gets a specific attachment value by its key, returning a default value if not found.
+     * 根据键获取附加信息值，如果未找到则返回默认值。
      * 
-     * This is a convenience method similar to getAttachment(String), but allows
-     * specifying a default value to return when the key is not found.
+     * 这是getAttachment(String)的增强版本：
+     * - 支持指定默认值
+     * - 避免空值判断
+     * - 简化配置获取
+     * 
+     * 使用场景：
+     * 1. 获取配置项时指定默认值
+     * 2. 处理可选的元数据
+     * 3. 确保返回有效值
+     * 
+     * 示例：
+     * - getAttachment("timeout", "5000")
+     * - getAttachment("version", "1.0.0")
+     * - getAttachment("loadbalance", "random")
      *
-     * @param key The key of the attachment to retrieve
-     * @param defaultValue The value to return if the key is not found
-     * @return The attachment value associated with the key, or defaultValue if not found
-     * @serial The attachment value must be serializable for RPC transmission
+     * @param key 要获取的附加信息的键
+     * @param defaultValue 当键不存在时返回的默认值
+     * @return 与键关联的附加信息值，如果未找到则返回defaultValue
+     * @serial 附加信息值必须可序列化以支持RPC传输
      */
     String getAttachment(String key, String defaultValue);
 
     /**
-     * Gets the invoker associated with this invocation in the current context.
+     * 获取当前上下文中与此调用关联的Invoker。
      * 
-     * The invoker represents the service provider that will handle this invocation.
-     * This is particularly useful in filter chains and other intercepting code
-     * to access the target service provider.
+     * Invoker代表了将处理此调用的服务提供者：
+     * - 包含服务的具体实现
+     * - 维护调用的上下文信息
+     * - 处理实际的调用过程
+     * 
+     * 使用场景：
+     * 1. 过滤器链中访问目标服务
+     * 2. 拦截器中获取服务信息
+     * 3. 获取服务配置和元数据
+     * 4. 服务调用监控和统计
      *
-     * @return The Invoker instance that will handle this invocation
-     * @transient This value should not be serialized as it's context-specific
+     * @return 处理此调用的Invoker实例
+     * @transient 此值不应被序列化，因为它是上下文相关的
      */
     Invoker<?> getInvoker();
 
     /**
-     * Stores a value in the invocation's attribute map.
+     * 在调用的属性映射中存储值。
      * 
-     * Attributes differ from attachments in that they are not transmitted during RPC calls.
-     * They are used for storing context data that is only relevant within the current JVM.
+     * 属性与附加信息(attachments)的区别：
+     * - 属性不会在RPC调用中传输
+     * - 仅在当前JVM中有效
+     * - 用于存储本地上下文数据
+     * - 支持任意类型的值
+     * 
+     * 使用场景：
+     * 1. 存储调用链路信息
+     * 2. 保存中间处理结果
+     * 3. 传递本地上下文
+     * 4. 缓存临时数据
      *
-     * @param key The key to store the value under
-     * @param value The value to store
-     * @return The previous value associated with the key, or null if there was no previous value
+     * @param key 存储值的键
+     * @param value 要存储的值
+     * @return 与键关联的前一个值，如果没有则返回null
      */
     Object put(Object key, Object value);
 
     /**
-     * Retrieves a value from the invocation's attribute map.
+     * 从调用的属性映射中获取值。
      * 
-     * @param key The key of the value to retrieve
-     * @return The value associated with the key, or null if not found
+     * 此方法用于：
+     * - 获取之前存储的本地属性
+     * - 访问上下文数据
+     * - 读取中间结果
+     * 
+     * 注意事项：
+     * - 返回值可能为null
+     * - 属性仅在本地有效
+     * - 支持任意类型的值
+     *
+     * @param key 要获取的值的键
+     * @return 与键关联的值，如果未找到则返回null
      */
     Object get(Object key);
 
     /**
-     * Gets all attributes stored in this invocation.
+     * 获取此调用中存储的所有属性。
      * 
-     * Returns a map of all local attributes. Unlike attachments, these attributes
-     * are not transmitted during RPC calls and are only valid within the current JVM.
+     * 返回包含所有本地属性的映射：
+     * - 与attachments不同，这些属性不会在RPC调用中传输
+     * - 仅在当前JVM中有效
+     * - 用于本地上下文管理
+     * - 支持任意类型的键值对
+     * 
+     * 使用场景：
+     * 1. 批量获取上下文数据
+     * 2. 调试和监控
+     * 3. 状态快照
+     * 4. 上下文传递
      *
-     * @return A Map containing all attributes
+     * @return 包含所有属性的Map
      */
     Map<Object, Object> getAttributes();
 }

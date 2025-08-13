@@ -23,22 +23,31 @@ import com.alibaba.dubbo.rpc.RpcException;
 import com.alibaba.dubbo.rpc.cluster.support.FailoverCluster;
 
 /**
- * Cluster. (SPI, Singleton, ThreadSafe)
+ * 集群接口。(SPI, Singleton, ThreadSafe)
  * <p>
- * <a href="http://en.wikipedia.org/wiki/Computer_cluster">Cluster</a>
- * <a href="http://en.wikipedia.org/wiki/Fault-tolerant_system">Fault-Tolerant</a>
+ * 集群接口用于将多个服务提供者合并为一个虚拟的服务提供者，并提供以下功能：
+ * <ul>
+ * <li>故障转移：当调用失败时，自动切换到其他可用的服务提供者</li>
+ * <li>负载均衡：在多个服务提供者之间分配请求</li>
+ * <li>服务目录：管理服务提供者列表</li>
+ * </ul>
+ * <p>
+ * 相关链接：
+ * <a href="http://en.wikipedia.org/wiki/Computer_cluster">集群</a>
+ * <a href="http://en.wikipedia.org/wiki/Fault-tolerant_system">容错系统</a>
  *
+ * @see com.alibaba.dubbo.rpc.cluster.support.FailoverCluster
  */
 @SPI(FailoverCluster.NAME)
 public interface Cluster {
 
     /**
-     * Merge the directory invokers to a virtual invoker.
-     *
-     * @param <T>
-     * @param directory
-     * @return cluster invoker
-     * @throws RpcException
+     * 将目录中的多个服务提供者合并为一个虚拟的服务提供者。
+     * 
+     * @param <T> 服务的泛型类型
+     * @param directory 服务目录，包含了所有可用的服务提供者列表
+     * @return 集群服务提供者，封装了容错、负载均衡等集群能力
+     * @throws RpcException 当合并过程中发生错误时抛出此异常
      */
     @Adaptive
     <T> Invoker<T> join(Directory<T> directory) throws RpcException;
